@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim@yahoo.com>
-" Last Modified: 07-Feb-2002 @ 16:59
+" Last Modified: 15-Feb-2002 @ 13:13
 " Requires: Vim-6.0 or higher
-" Version: 2.1.1
+" Version: 2.1.2
 " Environment:
 "   Adds
 "       MvAddElement
@@ -507,9 +507,11 @@ endfunction
 "                storage is alloted in the script name space (for Vim 6.0 or
 "                above) or in the global name space (for previous Vim versions).
 function! MvIterCreate(array, sep, iterName)
-  exec "let " . s:GetVarForIter(a:iterName) . "_prevIndex = 0"
   exec "let " . s:GetVarForIter(a:iterName) . "_array = a:array"
   exec "let " . s:GetVarForIter(a:iterName) . "_sep = a:sep"
+  exec "let " . s:GetVarForIter(a:iterName) . "_max = " .
+        \ MvNumberOfElements(a:array, a:sep)
+  exec "let " . s:GetVarForIter(a:iterName) . "_curIndex = 0"
 endfunction
 
 
@@ -518,9 +520,10 @@ endfunction
 "   iterName - The name of the iterator to be destroyed that was previously
 "                created using MvIterCreate.
 function! MvIterDestroy(iterName)
-  exec "unlet " . s:GetVarForIter(a:iterName) . "_prevIndex"
   exec "unlet " . s:GetVarForIter(a:iterName) . "_array"
   exec "unlet " . s:GetVarForIter(a:iterName) . "_sep"
+  exec "unlet " . s:GetVarForIter(a:iterName) . "_max"
+  exec "unlet " . s:GetVarForIter(a:iterName) . "_curIndex"
 endfunction
 
 
@@ -533,7 +536,12 @@ endfunction
 " Returns:
 "   1 (for true) if has more elements or 0 (for false).
 function! MvIterHasNext(iterName)
-  if ! exists(s:GetVarForIter(a:iterName) . "_prevIndex")
+  if ! exists(s:GetVarForIter(a:iterName) . "_curIndex")
+    return 0
+  endif
+
+  exec "let max = " . s:GetVarForIter(a:iterName) . "_max"
+  if max == 0
     return 0
   endif
 
@@ -542,8 +550,8 @@ function! MvIterHasNext(iterName)
     return 0
   endif
 
-  exec "let prevIndex = " . s:GetVarForIter(a:iterName) . "_prevIndex"
-  if prevIndex >= 0
+  exec "let curIndex = " . s:GetVarForIter(a:iterName) . "_curIndex"
+  if curIndex < max
     return 1
   else
     return 0
@@ -560,17 +568,16 @@ endfunction
 " Returns:
 "   the next element in the iterator (array).
 function! MvIterNext(iterName)
-  if ! exists(s:GetVarForIter(a:iterName) . "_prevIndex")
+  if ! exists(s:GetVarForIter(a:iterName) . "_curIndex")
     return ""
   endif
 
-  exec "let prevIndex = " . s:GetVarForIter(a:iterName) . "_prevIndex"
+  exec "let curIndex = " . s:GetVarForIter(a:iterName) . "_curIndex"
   exec "let array = " . s:GetVarForIter(a:iterName) . "_array"
   exec "let sep = " . s:GetVarForIter(a:iterName) . "_sep"
-  if prevIndex >= 0
-    let ele = s:NextElement(array, sep, prevIndex)
-    exec "let " . s:GetVarForIter(a:iterName) . "_prevIndex = " .
-        \ s:NextIndex(array, sep, prevIndex + 1)
+  if curIndex >= 0
+    let ele = MvElementAt(array, sep, curIndex)
+    exec "let " . s:GetVarForIter(a:iterName) . "_curIndex = " . (curIndex + 1)
   else
     let ele = ""
   endif
@@ -688,56 +695,6 @@ endfunction
 " --------------------------
 "
 
-" This is a low level functions. Use iterators and other functions defined
-"   above for convenience.
-" Returns the next index after the specified index.
-" Returns a value less than 0 if there is no next index.
-function! s:NextIndex(array, sep, startPos)
-  " Because match() behaves this way.
-  if a:startPos < 0
-    let startPos = 0
-  else
-    let startPos = a:startPos
-  endif
-  if v:version < 600
-    let remainingString = strpart(a:array, a:startPos, strlen(a:array))
-    let index = match(remainingString, a:sep)
-    if index != -1
-      let index = index + a:startPos
-    endif
-  else
-    let index = match(a:array, a:sep, startPos)
-  endif
-  " Take care of an excess separator at the end.
-  if index != -1 && (index + strlen(a:sep)) == strlen(a:array)
-    let index = -2
-  endif
-  return index
-endfunction 
-
-
-" This is a low level functions. Use iterators and other functions defined
-"   above for convenience.
-" Returns the next element after the specified index.
-function! s:NextElement(array, sep, prevIndex)
-  if a:prevIndex == 0
-    let nextPos =  a:prevIndex
-  else
-    let nextPos =  a:prevIndex + strlen(a:sep)
-  endif
-  let nextIndex = s:NextIndex(a:array, a:sep, nextPos)
-  if nextIndex == -2
-    let nextIndex = strlen(a:array) - strlen(a:sep)
-  " Last element may not have a following separator.
-  elseif nextIndex == -1 && (a:prevIndex + strlen(a:sep) < strlen(a:array))
-      let nextIndex = strlen(a:array)
-  endif
-  if nextIndex != -1
-    return strpart(a:array, nextPos, (nextIndex - nextPos))
-  endif
-endfunction
-
-
 function! s:GetVarForIter(iterName)
   if v:version < 600
     return "g:" . a:iterName
@@ -777,32 +734,25 @@ function! s:Escape(str)
   return escape(a:str, "\\.[^$~")
 endfunction
 
-
-" Test functions.
-"function! MvTestPrintAll(array, sep)
-"  let prevIndex = 0
-"  let elementCount = 0
-"  while prevIndex >= 0
-"    call s:Assert(s:NextElement(a:array, a:sep, prevIndex), elementCount+1, "s:NextElement with array: " . a:array . " and sep: " . a:sep . " for " . (elementCount+1))
-"    let prevIndex = s:NextIndex(a:array, a:sep, prevIndex + 1)
-"    let elementCount = elementCount + 1
-"  endwhile
-"endfunction
 "
+"
+"function! s:Assert(actual, expected, msg)
+"  if a:actual != a:expected
+"    call input("Failed: " . a:msg. ": actual: " . a:actual . " expected: " . a:expected)
+"  endif
+"endfunction
 "
 "function! MvTestPrintAllWithIter(array, sep)
 "  let elementCount = 0
 "  call MvIterCreate(a:array, a:sep, "MyIter")
 "  while MvIterHasNext("MyIter")
-"    call s:Assert(MvIterNext("MyIter"), elementCount+1, "s:NextElement with array: " . a:array . " and sep: " . a:sep . " for " . (elementCount+1))
+"    call s:Assert(MvIterNext("MyIter"), elementCount+1, "MvIterNext with array: " . a:array . " and sep: " . a:sep . " for " . (elementCount+1))
 "    let elementCount = elementCount + 1
 "  endwhile
 "  call MvIterDestroy("MyIter")
 "endfunction
 "
 "function! MvRunTests()
-"  call MvTestPrintAll("1,2,3,4,", ",")
-"  call MvTestPrintAll("1,2,3,4", ",")
 "  call MvTestPrintAllWithIter("1,,2,,3,,4,,", ",,")
 "  call MvTestPrintAllWithIter("1,,2,,3,,4", ",,")
 "
@@ -870,7 +820,7 @@ endfunction
 "  call s:Assert(MvInsertElementAt("1,,2,,3,,4,,", ",,", "5", 0), "5,,1,,2,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4,, sep: ,, for element 5 at index 0")
 
 "  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 1), "2,,3,,4,,1,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 1")
-"  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 0), "1,,2,,3,,4,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 0")
+"  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 0), "1,,2,,3,,4", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 0")
 "  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 3), "4,,1,,2,,3,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 3")
 "  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 4), "1,,2,,3,,4,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 4")
 
@@ -924,10 +874,4 @@ endfunction
 "  call s:Assert(MvLastElement("1xxxx2xxx3x4", 'x\+'), "4", "MvLastElement with array: 1xxxx2xxx3x4")
 "  call s:Assert(MvLastElement("1xxxx", 'x\+'), "1", "MvLastElement with array: 1xxxx")
 "  call s:Assert(MvLastElement("1", 'x\+'), "1", "MvLastElement with array: 1")
-"endfunction
-"
-"function! s:Assert(actual, expected, msg)
-"  if a:actual != a:expected
-"    call input("Failed: " . a:msg. ": actual: " . a:actual . " expected: " . a:expected)
-"  endif
 "endfunction

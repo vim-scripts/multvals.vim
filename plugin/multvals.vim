@@ -11,6 +11,7 @@
 "       MvRemoveElementAt
 "       MvNumberOfElements
 "       MvStrIndexOfElement
+"       MvStrIndexAfterElement
 "       MvStrIndexOfElementAt
 "       MvIndexOfElement
 "       MvContainsElement
@@ -20,6 +21,8 @@
 "       MvPushToFrontElementAt
 "       MvPullToBack
 "       MvPullToBackElementAt
+"       MvRotateLeftAt
+"       MvRotateRightAt
 "       MvIterCreate
 "       MvIterDestroy
 "       MvIterHasNext
@@ -152,6 +155,44 @@ function! MvRemoveElementAt(array, sep, index)
     let sub2 = strpart(sub2, ind2 + strlen(a:sep), strlen(sub2) - ind2 - strlen(a:sep))
   endif
   return sub1 . sub2
+endfunction
+
+
+" Rotates the array such that the element at index is on the left (the first).
+" Params:
+"   index - The index of the element that needs to be rotated.
+" Returns:
+"   the new array.
+function! MvRotateLeftAt(array, sep, index)
+  if a:index <= 0 " If index is 0, there is nothing that needs to be done.
+    return a:array
+  endif
+
+  let array = s:EnsureTrailingSeparator(a:array, a:sep)
+  let strIndex = MvStrIndexOfElementAt(array, a:sep, a:index)
+  if strIndex < 0
+    return array
+  endif
+  return strpart(array, strIndex) . strpart(array, 0, strIndex)
+endfunction
+
+
+" Rotates the array such that the element at index is on the right (the last).
+" Params:
+"   index - The index of the element that needs to be rotated.
+" Returns:
+"   the new array.
+function! MvRotateRightAt(array, sep, index)
+  if a:index < 0
+    return a:array
+  endif
+
+  let array = s:EnsureTrailingSeparator(a:array, a:sep)
+  let strIndex = MvStrIndexOfElementAt(array, a:sep, a:index + 1)
+  if strIndex < 0
+    return array
+  endif
+  return strpart(array, strIndex) . strpart(array, 0, strIndex)
 endfunction
 
 
@@ -547,6 +588,8 @@ endfunction
 "   direction if ele2 comes before ele1 (for no swap), and 0 or -direction
 "     otherwise (for swap).
 function! MvCmpByPosition(array, sep, ele1, ele2, direction)
+  "let array = a:sep.s:EnsureTrailingSeparator(a:array, a:sep)
+  "if match(array, a:sep.a:ele1.'\('.a:sep.'.\{-}\)\{-}'.a:sep.a:ele2.a:sep)
   let strIndex1 = MvStrIndexOfElement(a:array, a:sep, a:ele1)
   let strIndex2 = MvStrIndexOfElement(a:array, a:sep, a:ele2)
 
@@ -825,6 +868,17 @@ endfunction
 "
 "  call s:Assert(MvInsertElementAt("1,,2,,3,,4", ",,", "5", 2), "1,,2,,5,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4 sep: ,, for element 5 at index 2")
 "  call s:Assert(MvInsertElementAt("1,,2,,3,,4,,", ",,", "5", 0), "5,,1,,2,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4,, sep: ,, for element 5 at index 0")
+
+"  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 1), "2,,3,,4,,1,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 1")
+"  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 0), "1,,2,,3,,4,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 0")
+"  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 3), "4,,1,,2,,3,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 3")
+"  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 4), "1,,2,,3,,4,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 4")
+
+"  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 1), "3,,4,,1,,2,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 1")
+"  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 0), "2,,3,,4,,1,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 0")
+"  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 3), "1,,2,,3,,4,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 3")
+"  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 4), "1,,2,,3,,4,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 4")
+
 "
 "  call s:Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", "c", "Please press Enter:", "", 0), "c", "MvPromptForElement with array a,,b,,c,,d,, for default element c")
 "  call s:Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", 1, "Please press Enter:", "", 0), "b", "MvPromptForElement with array a,,b,,c,,d,, for default index 1")

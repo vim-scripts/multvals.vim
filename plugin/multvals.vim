@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Modified: 30-Jan-2003 @ 15:36
-" Requires: Vim-6.0 or higher, genutils.vim(1.2) for sorting support.
-" Version: 3.1.1
+" Last Modified: 29-May-2003 @ 14:49
+" Requires: Vim-6.0, genutils.vim(1.2) for sorting support.
+" Version: 3.2.1
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -46,6 +46,7 @@
 "       MvCmpByPosition
 "       MvPromptForElement
 "       MvPromptForElement2
+"       MvNumSearchNext
 "
 " Usage:
 "   - An array is nothing but a string of multiple values separated by a
@@ -69,7 +70,7 @@
 "     as shows in the below example
 "     Ex Usage:
 "       " The below pattern avoids protected comma's from getting treated as
-"       separators.
+"       "   separators.
 "       call MvIterCreate(&tags, "\\\@<!\(\\\\\)*\zs,", "Tags", ',')
 "     	while MvIterHasNext("Tags")
 "     	  call input("Next element: " . MvIterNext("Tags"))
@@ -406,17 +407,17 @@ endfunction
 "   The following sorts the numbers in descending order using the bundled number
 "   comparator (see genutils.vim).
 "
-"     echo MvQSortElements('3,4,2,5,7,1,6', ',', 's:CmpByNumber', -1)
+"     echo MvQSortElements('3,4,2,5,7,1,6', ',', 'CmpByNumber', -1)
 "
 "   The following sorts the alphabet in ascending order again using the
 "   bundled string comparator (see genutils.vim).
 "
-"     echo MvQSortElements('e,a,d,b,f,c,g', ',', 's:CmpByString', 1)
+"     echo MvQSortElements('e,a,d,b,f,c,g', ',', 'CmpByString', 1)
 "
 " Params:
 "   cmp - name of the comparator function. You can use the names of standard
 "	  comparators specified in the genutils.vim script, such as
-"	  's:CmpByString', or define your own (which then needs to be a global
+"	  'CmpByString', or define your own (which then needs to be a global
 "	  function or if it is a script local function, prepend it with your
 "	  script id. See genutils.vim for how to get your script id and for
 "	  examples on comparator functions (if you want to write your own).
@@ -902,7 +903,7 @@ function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
       continue
     endif
     let newArray = newArray . element . sep
-    let element = index . s:Spacer(4 - s:nDigits(index)) . element
+    let element = strpart(index."   ", 0, 4) . element
     let eleColWidth = (strlen(element) - 1) / colWidth + 1
     " Fill up the spacer for the rest of the partial column.
     let element = element . s:Spacer(
@@ -980,6 +981,49 @@ function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
   endwhile
   return selectedElement
 endfunction
+
+
+" This function searches for the value in the given array that comes after val
+"   in the given dir (1 or -1). The array is expected to be sorted. Only those
+"   that are not regular expressions are supported as separators.
+function MvNumSearchNext(array, sep, val, dir, ...)
+  let nextVal = ''
+  if a:array != ''
+    let sep = (a:0 == 0) ? a:sep : a:1
+    let array = s:EnsureTrailingSeparator(a:array, a:sep, sep)
+    let firstNum = matchstr(array, '^\d\+')
+    let lastNum = matchstr(array, '\(\d\+\)\ze\%(' . a:sep . '\)$')
+    if a:dir > 0 && a:val < firstNum
+      let nextVal = firstNum
+    elseif a:dir < 0 && a:val > lastNum
+      let nextVal = lastNum
+    endif
+
+    if nextVal == ''
+      let nextVal = substitute(array,
+	    \ '\(\d\+\)\%(' . a:sep . '\)\%(\(\d\+\)\%(' . a:sep . '\)\|$\)\@=',
+	    \ '\=s:GetNextInOrder(' . a:val . ', submatch(1), submatch(2), ' .
+	    \ a:dir . ')', 'g')
+    endif
+  endif
+  return nextVal
+endfunction
+
+" This function returns val1 or val2 as the next value of val, depending on
+"   the direction that is passed in. This is to be used mainly by the
+"   substitute in s:NextBrkPt() function.
+function! s:GetNextInOrder(val, val1, val2, dir)
+  if a:dir > 0
+    if a:val1 <= a:val && a:val < a:val2
+      return a:val2
+    endif
+  else
+    if a:val2 >= a:val && a:val > a:val1
+      return a:val1
+    endif
+  endif
+  return ''
+endfunction
  
 " Reader functions }}}
 
@@ -1030,19 +1074,6 @@ endfunction
 function! s:Spacer(width)
   return strpart("                                                            ",
 	\ 0, a:width)
-endfunction
-
-
-function! s:nDigits(num)
-  " I know log() can be used, but since log() is not available, what is the
-  " other way finding this?
-  return (a:num < 10)
-	\ ? 1
-	\ : (a:num < 100)
-	\   ? 2
-	\   : (a:num < 1000)
-	\     ? 3
-	\     : 4
 endfunction
 
 " Utility functions }}}
@@ -1219,10 +1250,10 @@ endfunction
 "
 "  call s:Assert(MvSwapElementsAt('1,,,2,,,,3,,4', ',\+', 1, 3, ','), '1,,,4,3,,2,', 'MvSwapElementsAt with array 1,,,2,,,,3,,4 for for elements:1 and 3')
 "
-"  call s:Assert(MvQSortElements('3,4,2,5,7,1,6', ',', 's:CmpByNumber', -1), '7,6,5,4,3,2,1,', 'MvQSortElements with array: 3,4,2,5,7,1,6 with number comparator in descending order')
-"  call s:Assert(MvQSortElements('e,a,d,b,f,c,g', ',', 's:CmpByString', 1), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
+"  call s:Assert(MvQSortElements('3,4,2,5,7,1,6', ',', 'CmpByNumber', -1), '7,6,5,4,3,2,1,', 'MvQSortElements with array: 3,4,2,5,7,1,6 with number comparator in descending order')
+"  call s:Assert(MvQSortElements('e,a,d,b,f,c,g', ',', 'CmpByString', 1), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
 "
-"  call s:Assert(MvQSortElements('e,,a,,,d,,b,f,,,,c,,g', ',\+', 's:CmpByString', 1, ','), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
+"  call s:Assert(MvQSortElements('e,,a,,,d,,b,f,,,,c,,g', ',\+', 'CmpByString', 1, ','), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
 "endfunction
 " Testing }}}
 

@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
-" Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Modified: 17-Dec-2003 @ 10:28
+" Author: Hari Krishna Dara (hari_vim at yahoo dot com)
+" Last Modified: 26-Feb-2004 @ 19:10
 " Requires: Vim-6.0, genutils.vim(1.2) for sorting support.
-" Version: 3.4.2
+" Version: 3.5.1
 " Acknowledgements:
 "   - MvRemoveElementAll was contributed by Steve Hall
 "     "digitect at mindspring dot com"
@@ -18,50 +18,52 @@
 "     The types in prototypes of the functions mimic Java.
 "   Writer Functions:
 "     All the writer functions return the new array after modifications. 
-"       String MvAddElement(String array, String sep, String ele)
-"       String MvInsertElementAt(String array, String sep, String ele, int ind)
-"       String MvRemoveElement(String array, String sep, String ele)
-"       String MvRemovePattern(String array, String sep, String pat)
-"       String MvRemoveElementAt(String array, String sep, int ind)
-"       String MvRemoveElementAll(String array, String sep, String ele)
-"       String MvRemovePatternAll(String array, String sep, String pat)
-"       String MvReplaceElementAt(String array, String sep, String ele, int ind)
-"       String MvPushToFront(String array, String sep, String ele)
-"       String MvPushToFrontElementAt(String array, String sep, int ind)
-"       String MvPullToBack(String array, String sep, String ele)
-"       String MvPullToBackElementAt(String array, String sep, int ind)
-"       String MvRotateLeftAt(String array, String sep, int ind)
-"       String MvRotateRightAt(String array, String sep, int ind)
-"       String MvSwapElementsAt(String array, String sep, int ind1, int ind2)
-"       String MvQSortElements(String array, String sep, String cmp, int dir)
+"       String MvAddElement(String array, String sep, String ele, ...)
+"       String MvInsertElementAt(String array, String sep, String ele, int ind, ...)
+"       String MvRemoveElement(String array, String sep, String ele, ...)
+"       String MvRemovePattern(String array, String sep, String pat, ...)
+"       String MvRemoveElementAt(String array, String sep, int ind, ...)
+"       String MvRemoveElementAll(String array, String sep, String ele, ...)
+"       String MvRemovePatternAll(String array, String sep, String pat, ...)
+"       String MvReplaceElementAt(String array, String sep, String ele, int ind, ...)
+"       String MvPushToFront(String array, String sep, String ele, ...)
+"       String MvPushToFrontElementAt(String array, String sep, int ind, ...)
+"       String MvPullToBack(String array, String sep, String ele, ...)
+"       String MvPullToBackElementAt(String array, String sep, int ind, ...)
+"       String MvRotateLeftAt(String array, String sep, int ind, ...)
+"       String MvRotateRightAt(String array, String sep, int ind, ...)
+"       String MvSwapElementsAt(String array, String sep, int ind1, int ind2,
+"       ...)
+"       String MvQSortElements(String array, String sep, String cmp, int dir, ...)
 "
 "   Reader Functions:
-"       int    MvNumberOfElements(String array, String sep)
-"       int    MvStrIndexOfElement(String array, String sep, String ele)
-"       int    MvStrIndexOfPattern(String array, String sep, String pat)
-"       int    MvStrIndexAfterElement(String array, String sep, String ele)
-"       int    MvStrIndexAfterPattern(String array, String sep, String pat)
-"       int    MvStrIndexOfElementAt(String array, String sep, int ind)
-"       int    MvIndexOfElement(String array, String sep, int ind)
-"       int    MvIndexOfPattern(String array, String sep, String pat)
-"       int    MvContainsElement(String array, String sep, String ele)
-"       int    MvContainsPattern(String array, String sep, String pat)
-"       String MvElementAt(String array, String sep, int ind)
-"       String MvElementLike(String array, String sep, String pat)
-"       String MvLastElement(String array, String sep)
-"       void   MvIterCreate(String array, String sep, Sring iterName)
-"       void   MvIterDestroy(String iterName)
-"       int    MvIterHasNext(String iterName)
-"       String MvIterNext(String iterName)
-"       int    MvCmpByPosition(String array, String sep, String ele, String
-"                              ele2, int dir)
-"       String MvPromptForElement(String array, String sep, String def,
-"                                 String prompt, String skip, int useDialog)
-"       String MvPromptForElement2(String array, String sep, String def,
-"                                 String prompt, String skip, int useDialog,
-"                                 int nCols)
-"       int    MvGetSelectedIndex()
-"       String MvNumSearchNext(String array, String sep, String ele, int dir)
+"       int     MvNumberOfElements(String array, String sep, ...)
+"       int     MvStrIndexOfElement(String array, String sep, String ele, ...)
+"       int     MvStrIndexOfPattern(String array, String sep, String pat, ...)
+"       int     MvStrIndexAfterElement(String array, String sep, String ele, ...)
+"       int     MvStrIndexAfterPattern(String array, String sep, String pat, ...)
+"       int     MvStrIndexOfElementAt(String array, String sep, int ind, ...)
+"       int     MvIndexOfElement(String array, String sep, int ind, ...)
+"       int     MvIndexOfPattern(String array, String sep, String pat, ...)
+"       boolean MvContainsElement(String array, String sep, String ele, ...)
+"       boolean MvContainsPattern(String array, String sep, String pat, ...)
+"       String  MvElementAt(String array, String sep, int ind, ...)
+"       String  MvElementLike(String array, String sep, String pat, ...)
+"       String  MvLastElement(String array, String sep, ...)
+"       void    MvIterCreate(String array, String sep, Sring iterName, ...)
+"       void    MvIterDestroy(String iterName)
+"       boolean MvIterHasNext(String iterName)
+"       String  MvIterNext(String iterName)
+"       String  MvIterPeek(String iterName)
+"       int     MvCmpByPosition(String array, String sep, String ele, String
+"                               ele2, int dir, ...)
+"       String  MvPromptForElement(String array, String sep, String def,
+"                                  String prompt, String skip, int useDialog, ...)
+"       String  MvPromptForElement2(String array, String sep, String def,
+"                                  String prompt, String skip, int useDialog,
+"                                  int nCols, ...)
+"       int     MvGetSelectedIndex()
+"       String  MvNumSearchNext(String array, String sep, String ele, int dir, ...)
 "
 " Usage:
 "   - An array is nothing but a string of multiple values separated by a
@@ -70,7 +72,9 @@
 "     However, there is nothing special about this function, you can as well
 "     make up the string by simply concatinating elements with the chosen
 "     pattern as a separator.
-"   - The separator can be any regular expression. However, if a regular
+"   - The separator can be any regular expression (which means that if you
+"     want to use regex metacharacters in a non-regex pattern, then you need
+"     to protect the metacharacters with backslashes). However, if a regular
 "     expression is used as a separtor, you need to pass in a second separator,
 "     which is a plain string that guarantees to match the separator regular
 "     expression, as an additional argument (which was not the case with
@@ -86,17 +90,27 @@
 "     Ex Usage:
 "       " The below pattern avoids protected comma's from getting treated as
 "       "   separators.
-"       call MvIterCreate(&tags, "\\\@<!\(\\\\\)*\zs,", "Tags", ',')
-"       while MvIterHasNext("Tags")
-"         call input("Next element: " . MvIterNext("Tags"))
+"       call MvIterCreate(&tags, '\\\@<!\(\\\\\)*\zs,', 'Tags', ',')
+"       while MvIterHasNext('Tags')
+"         call input('Next element: ' . MvIterNext('Tags'))
 "       endwhile
-"       call MvIterDestroy("Tags")
+"       call MvIterDestroy('Tags')
 "
-" ALMOST ALL OPERATIONS TAKE THE ARRAY AND THE SEPARATOR AS THE FIRST TWO
-"   ARGUMENTS.
-" All element-indexes start from 0 (like in C++ or Java).
-" All string-indexes start from 0 (as it is for Vim built-in functions).
+"   ALMOST ALL OPERATIONS TAKE THE ARRAY AND THE SEPARATOR AS THE FIRST TWO
+"     ARGUMENTS.
+"   All element-indexes start from 0 (like in C++ or Java).
+"   All string-indexes start from 0 (as it is for Vim built-in functions).
 "
+" Changes in 3.5:
+"   CAUTION: This version potentially introduces an incompatibility with that
+"   of older versions because of the below change. If your plugin depended on
+"   this undocumented behavior you will have to update your plugin immediately
+"   to work with the new plugin. Even if you didn't know about behavior, it is
+"   still better to check if your plugin accidentally depended on this.
+"   - Now the plugin ignores the 'ignorecase' and 'smartcase' settings, so the
+"     results are more consistent. This I think is the right thing to do for a
+"     library.
+"   - New function MvIterPeek.
 " Changes in 3.4:
 "   - The plugin was not working correctly when there are *'s in the array.
 "   - New function MvRemovePatternAll
@@ -140,6 +154,7 @@
 "       conflicts.
 "
 " TODO:
+"   - 'ic' impacts multvals.
 "   - Why is MvElementAt('a\|b\\|c|d', '\\\@<!\%(\\\\\)*|', <index>, '|') not
 "     working as expected (MvNumberOfElements reports correctly)?
 "   - More testing is required for regular expressions as separators.
@@ -157,7 +172,7 @@
 if exists("loaded_multvals")
   finish
 endif
-let loaded_multvals = 304
+let loaded_multvals = 305
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -270,8 +285,12 @@ endfunction
 function! MvRemoveElementAll(array, sep, ele, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   let array = a:array
-  while MvContainsElement(array, a:sep, a:ele, sep)
+  while 1
+    let ar = array
     let array = MvRemoveElement(array, a:sep, a:ele, sep)
+    if ar ==# array
+      break
+    endif
   endwhile
   return array
 endfunction
@@ -285,8 +304,12 @@ endfunction
 function! MvRemovePatternAll(array, sep, pat, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   let array = a:array
-  while MvContainsPattern(array, a:sep, a:pat, sep)
+  while 1
+    let ar = array
     let array = MvRemovePattern(array, a:sep, a:pat, sep)
+    if ar ==# array
+      break
+    endif
   endwhile
   return array
 endfunction
@@ -494,7 +517,8 @@ function! MvQSortElements(array, sep, cmp, direction, ...)
   let nextEle = ''
   call MvIterCreate(s:sortArrayIndexes, ',', 'MvQSortElements', sep)
   while MvIterHasNext('MvQSortElements')
-    let nextEle = MvElementAt(a:array, a:sep, MvIterNext('MvQSortElements'), sep)
+    let nextEle = MvElementAt(a:array, a:sep, MvIterNext('MvQSortElements'),
+          \ sep)
     let array = MvAddElement(array, sep, nextEle)
   endwhile
   call MvIterDestroy('MvQSortElements')
@@ -533,7 +557,7 @@ function! MvNumberOfElements(array, sep, ...)
   " not be replaced with an 'x'.
   let mod = substitute(array, pat, 'x', 'g')
   if strridx(mod, 'x') != (strlen(mod) - 1)
-    let nElements = strlen(matchstr(mod, '^x*')) + 1
+    let nElements = strlen(s:Matchstr(mod, '^x*', 0)) + 1
   else
     let nElements = strlen(mod)
   endif
@@ -567,8 +591,9 @@ function! s:MvStrIndexOfElementImpl(array, sep, ele, asPattern, ...)
     let ele = s:Escape(a:ele)
   endif
   let array = sep . s:EnsureTrailingSeparator(a:array, a:sep, sep)
-  let sub = matchstr(array, a:sep . ele . a:sep)
-  return stridx(array, sub) + strlen(matchstr(sub, '^' . a:sep)) - strlen(sep)
+  let sub = s:Matchstr(array, a:sep . ele . a:sep, 0)
+  return stridx(array, sub) + strlen(s:Matchstr(sub, '^' . a:sep, 0)) -
+        \ strlen(sep)
 endfunction
 
 
@@ -599,7 +624,7 @@ function! s:MvStrIndexAfterElementImpl(array, sep, ele, asPattern, ...)
     let ele = s:Escape(a:ele)
   endif
   let array = sep . s:EnsureTrailingSeparator(a:array, a:sep, sep)
-  let index = matchend(array, a:sep . ele . a:sep)
+  let index = s:Matchend(array, a:sep . ele . a:sep, 0)
   if index == strlen(array) && ! s:HasTrailingSeparator(a:array, a:sep)
     let index = index - strlen(sep)
   endif
@@ -617,7 +642,7 @@ function! MvLastElement(array, sep, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   " Remove the last separator.
   let array = a:array
-  let lastSepIndx = match(a:array, a:sep . '$')
+  let lastSepIndx = s:Match(a:array, a:sep . '$', 0)
   if lastSepIndx != -1
     let array = strpart(a:array, 0, lastSepIndx)
   endif
@@ -735,7 +760,7 @@ function! MvElementAt(array, sep, index, ...)
       let sub = array
     else
       let sub = strpart(array, 0,
-                  \ (strlen(array) - strlen(matchstr(array, a:sep))))
+                  \ (strlen(array) - strlen(s:Matchstr(array, a:sep, 0))))
     endif
 
   " Work-around for vim taking too long for last element, if the string is
@@ -747,7 +772,7 @@ function! MvElementAt(array, sep, index, ...)
     if strlen(sub1) != 0
       let sub2 = strpart(array, strlen(sub1))
       if strlen(sub2) != 0
-        let ind = match(sub2, a:sep)
+        let ind = s:Match(sub2, a:sep, 0)
         if ind == -1
           let sub = sub2
         else
@@ -767,14 +792,14 @@ function! MvElementAt(array, sep, index, ...)
         let sub3 = strpart(sub1, strlen(sub2))
         if s:HasTrailingSeparator(sub3, a:sep)
           let sub = strpart(sub3, 0,
-                  \ (strlen(sub3) - strlen(matchstr(sub3, a:sep))))
+                  \ (strlen(sub3) - strlen(s:Matchstr(sub3, a:sep, 0))))
         else
           let sub = sub3
         endif
       endif
     else
       let sub = strpart(sub1, 0,
-                  \ (strlen(sub1) - strlen(matchstr(sub1, a:sep))))
+                  \ (strlen(sub1) - strlen(s:Matchstr(sub1, a:sep, 0))))
     endif
   endif
   return sub
@@ -784,27 +809,27 @@ endfunction
 function! MvElementLike(array, sep, pat, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   let array = sep . s:EnsureTrailingSeparator(a:array, a:sep, sep)
-  let str = matchstr(array, a:sep.'\zs'.a:pat.'\ze'.a:sep)
+  let str = s:Matchstr(array, a:sep.'\zs'.a:pat.'\ze'.a:sep, 0)
   return str
 endfunction
 
 
 " Creates a new iterator with the given name. This can be passed to
-"   MvIterHasNext() and MvIterNext() to iterate over elements. Call MvIterDestroy()
-"   to remove the space occupied by this iterator.
+"   MvIterHasNext() and MvIterNext() to iterate over elements. Call
+"   MvIterDestroy() to remove the space occupied by this iterator.
 " Do not modify the array while using the iterator.
 " Params:
 "   iterName - A unique name that is used to identify this iterator. The
-"                storage is alloted in the script name space (for Vim 6.0 or
-"                above) or in the global name space (for previous Vim versions).
+"                storage is alloted in the plugin's name space, so it is
+"                important to make sure that you pass in a unique name that is
+"                unlikely to collide with other callers.
 function! MvIterCreate(array, sep, iterName, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
-  exec "let " . s:GetVarForIter(a:iterName) . "_array = a:array"
-  exec "let " . s:GetVarForIter(a:iterName) . "_sep = a:sep"
-  exec "let " . s:GetVarForIter(a:iterName) . "_samplesep = sep"
-  exec "let " . s:GetVarForIter(a:iterName) . "_max = " .
-        \ MvNumberOfElements(a:array, a:sep, sep)
-  exec "let " . s:GetVarForIter(a:iterName) . "_curIndex = 0"
+  let s:{a:iterName}_array = a:array
+  let s:{a:iterName}_sep = a:sep
+  let s:{a:iterName}_samplesep = sep
+  let s:{a:iterName}_max = MvNumberOfElements(a:array, a:sep, sep)
+  let s:{a:iterName}_curIndex = 0
 endfunction
 
 
@@ -813,11 +838,11 @@ endfunction
 "   iterName - The name of the iterator to be destroyed that was previously
 "                created using MvIterCreate.
 function! MvIterDestroy(iterName)
-  exec "unlet " . s:GetVarForIter(a:iterName) . "_array"
-  exec "unlet " . s:GetVarForIter(a:iterName) . "_sep"
-  exec "unlet " . s:GetVarForIter(a:iterName) . "_samplesep"
-  exec "unlet " . s:GetVarForIter(a:iterName) . "_max"
-  exec "unlet " . s:GetVarForIter(a:iterName) . "_curIndex"
+  unlet s:{a:iterName}_array
+  unlet s:{a:iterName}_sep
+  unlet s:{a:iterName}_samplesep
+  unlet s:{a:iterName}_max
+  unlet s:{a:iterName}_curIndex
 endfunction
 
 
@@ -830,17 +855,15 @@ endfunction
 " Returns:
 "   1 (for true) if has more elements or 0 (for false).
 function! MvIterHasNext(iterName)
-  if ! exists(s:GetVarForIter(a:iterName) . "_curIndex")
+  if ! exists("s:{a:iterName}_curIndex")
     return 0
   endif
 
-  exec "let max = " . s:GetVarForIter(a:iterName) . "_max"
-  if max == 0
+  if s:{a:iterName}_max == 0
     return 0
   endif
 
-  exec "let curIndex = " . s:GetVarForIter(a:iterName) . "_curIndex"
-  if curIndex < max
+  if s:{a:iterName}_curIndex < s:{a:iterName}_max
     return 1
   else
     return 0
@@ -857,17 +880,27 @@ endfunction
 " Returns:
 "   the next element in the iterator (array).
 function! MvIterNext(iterName)
-  if ! exists(s:GetVarForIter(a:iterName) . "_curIndex")
+  return s:MvIterNext(a:iterName, 0)
+endfunction
+
+function! s:MvIterPeek(iterName)
+  return s:MvIterNext(a:iterName, 1)
+endfunction
+
+function! s:MvIterNext(iterName, peek)
+  if ! exists("s:{a:iterName}_curIndex")
     return ""
   endif
 
-  exec "let curIndex = " . s:GetVarForIter(a:iterName) . "_curIndex"
-  exec "let array = " . s:GetVarForIter(a:iterName) . "_array"
-  exec "let sep = " . s:GetVarForIter(a:iterName) . "_sep"
-  exec "let samplesep = " . s:GetVarForIter(a:iterName) . "_samplesep"
+  let curIndex = s:{a:iterName}_curIndex
+  let array = s:{a:iterName}_array
+  let sep = s:{a:iterName}_sep
+  let samplesep = s:{a:iterName}_samplesep
   if curIndex >= 0
     let ele = MvElementAt(array, sep, curIndex, samplesep)
-    exec "let " . s:GetVarForIter(a:iterName) . "_curIndex = " . (curIndex + 1)
+    if ! a:peek
+      let s:{a:iterName}_curIndex = (curIndex + 1)
+    endif
   else
     let ele = ""
   endif
@@ -954,7 +987,7 @@ function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
   call MvIterCreate(a:array, a:sep, "MvPromptForElement", sep)
   while MvIterHasNext("MvPromptForElement")
     let element = MvIterNext("MvPromptForElement")
-    if element == a:skip
+    if element ==# a:skip
       continue
     endif
     let newArray = newArray . element . sep
@@ -998,16 +1031,16 @@ function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
     let index = index + 1
   endwhile
   " Finally if there is anything left in line, then append that too.
-  if line != ""
+  if line.'' != ''
     let optionsMsg = optionsMsg . line . "\n"
     let line = ""
   endif
   call MvIterDestroy("MvPromptForElement")
 
   let default = ''
-  if match(a:default, '^\d\+$') != -1
+  if s:Match(a:default, '^\d\+$', 0) != -1
     let default = a:default + 0
-  elseif a:default != ''
+  elseif a:default.'' != ''
     let default = MvIndexOfElement(a:array, a:sep, a:default, sep)
   endif
   if a:default == -1
@@ -1020,11 +1053,11 @@ function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
     else
       let s:selection = input(optionsMsg . a:msg, default)
     endif
-    if s:selection == ""
-      let selectedElement = ""
+    if s:selection.'' == ''
+      let selectedElement = ''
       let s:selection = -1
     else
-      let s:selection = (s:selection !~ '^\d\+$') ? -1 : (s:selection + 0)
+      let s:selection = (s:selection !~# '^\d\+$') ? -1 : (s:selection + 0)
       if s:selection >= 0 && s:selection < nElements
         let selectedElement = MvElementAt(newArray, sep, s:selection)
       else
@@ -1054,18 +1087,18 @@ endfunction
 "   separators.
 function! MvNumSearchNext(array, sep, ele, dir, ...)
   let nextEle = ''
-  if a:array != ''
+  if a:array.'' != ''
     let sep = (a:0 == 0) ? a:sep : a:1
     let array = s:EnsureTrailingSeparator(a:array, a:sep, sep)
-    let firstNum = matchstr(array, '^\d\+')
-    let lastNum = matchstr(array, '\(\d\+\)\ze\%(' . a:sep . '\)$')
+    let firstNum = s:Matchstr(array, '^\d\+', 0)
+    let lastNum = s:Matchstr(array, '\(\d\+\)\ze\%(' . a:sep . '\)$', 0)
     if a:dir > 0 && a:ele < firstNum
       let nextEle = firstNum
     elseif a:dir < 0 && a:ele > lastNum
       let nextEle = lastNum
     endif
 
-    if nextEle == ''
+    if nextEle.'' == ''
       let nextEle = substitute(array,
             \ '\(\d\+\)\%(' . a:sep . '\)\%(\(\d\+\)\%(' . a:sep . '\)\|$\)\@=',
             \ '\=s:GetNextInOrder(' . a:ele . ', submatch(1), submatch(2), ' .
@@ -1096,15 +1129,6 @@ endfunction
 
 " Utility functions {{{
 
-function! s:GetVarForIter(iterName)
-  if v:version < 600
-    return "g:" . a:iterName
-  else
-    return "s:" . a:iterName
-  endif
-endfunction
-
-
 " Make sure the array ha a trailing separator, returns the new array.
 function! s:EnsureTrailingSeparator(array, sep, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
@@ -1123,12 +1147,12 @@ endfunction
 
 
 function! s:HasTrailingSeparator(array, sep)
-  return match(a:array, a:sep . '$') != -1
+  return s:Match(a:array, a:sep . '$', 0) != -1
 endfunction
 
 
 function! s:IsRegularExpression(str)
-  return match(a:str, '[.\\[\]{}*^$~]') != -1
+  return s:Match(a:str, '[.\\[\]{}*^$~]', 0) != -1
 endfunction
 
 
@@ -1145,12 +1169,40 @@ function! s:Spacer(width)
         \ 0, a:width)
 endfunction
 
+function! s:Match(expr, pat, start)
+  return s:ExecMatchFunc('match', -1, a:expr, a:pat, a:start)
+endfunction
+
+function! s:Matchend(expr, pat, start)
+  return s:ExecMatchFunc('matchend', -1, a:expr, a:pat, a:start)
+endfunction
+
+function! s:Matchstr(expr, pat, start)
+  return s:ExecMatchFunc('matchstr', '',  a:expr, a:pat, a:start)
+endfunction
+
+" Always match() with 'ignorecase' and 'smartcase' off.
+function! s:ExecMatchFunc(funcName, def, expr, pat, start)
+  let _ic = &ignorecase
+  let _scs = &smartcase
+  let result = a:def
+  try
+    set noignorecase
+    set nosmartcase
+    exec 'let result = '.a:funcName.'(a:expr, a:pat, a:start)'
+  finally
+    let &ignorecase = _ic
+    let &smartcase = _scs
+  endtry
+  return result
+endfunction
+
 " Utility functions }}}
 
 
 " Testing {{{
 "function! s:Assert(actual, expected, msg)
-"  if a:actual != a:expected
+"  if a:actual !=# a:expected
 "    call input("Failed: " . a:msg. ": actual: " . a:actual . " expected: " . a:expected)
 "  endif
 "endfunction
@@ -1330,7 +1382,7 @@ endfunction
 "  call s:Assert(MvElementLike('abc,123,ABC,', ',', '\d\+'), '123', 'MvElementLike with array: abc,123,ABC and pattern: \d\+')
 "endfunction
 "
-"function! BenchMark(oldFunc, newFunc, ...)
+"function! MvBenchMark(oldFunc, newFunc, ...)
 "  let array='a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,'
 "  exec MakeArgumentString()
 "
@@ -1352,6 +1404,56 @@ endfunction
 "  let enTime = localtime()
 "  call input('Total time (old): ' . (enTime - stTime))
 "endfunction
+"
+"function! MvCompareBuiltIn()
+"  exec MakeArgumentString()
+"
+"  let array=''
+"  let array{1}{'y'} = ''
+"  let array{1}{'x'} = ''
+"  let array{1}{'next'} = '2'
+"  let y = 10
+"  let i = 1
+"  while i <= 80
+"    let array = MvAddElement(array, ';', y.','.i)
+"    let array{i}{'y'} = y
+"    let array{i}{'x'} = i
+"    let array{i}{'next'} = ''
+"    let array{i-1}{'next'} = i
+"    let i = i + 1
+"  endwhile
+"
+"  let y = 20
+"  let x = 10
+"
+"  let result = 0
+"  let i = 0
+"  let stTime = localtime()
+"  while i < 500
+"    let result = MvContainsElement(array, ';', y.','.x)
+"    let i = i + 1
+"  endwhile
+"  let enTime = localtime()
+"  call input('Total time (multvals): ' . (enTime - stTime) . ' and last result = '.result)
+"
+"  let result = 0
+"  let i = 0
+"  let stTime = localtime()
+"  while i < 500
+"    let tail = 1
+"    while ! type(array{tail}{'next'})
+"      if array{tail}{'y'} ==# y && array{tail}{'x'} ==# x
+"	let result = 1
+"	break
+"      endif
+"      let tail = array{tail}{'next'}
+"    endwhile
+"    let i = i + 1
+"  endwhile
+"  let enTime = localtime()
+"  call input('Total time (linked list): ' . (enTime - stTime) . ' and last result = '.result)
+"endfunction
+
 " Testing }}}
 
 " Restore cpo.

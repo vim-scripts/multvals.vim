@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim@yahoo.com>
-" Last Modified: 28-Jan-2002 @ 19:09
-" Requires: Vim-5.6 or higher
-" Version: 2.0.5
+" Last Modified: 07-Feb-2002 @ 16:59
+" Requires: Vim-6.0 or higher
+" Version: 2.1.1
 " Environment:
 "   Adds
 "       MvAddElement
@@ -41,6 +41,17 @@
 "     endwhile
 "     call MvIterDestroy("Tags")
 "
+" ALMOST ALL OPERATIONS TAKE THE ARRAY AND THE SEPARATOR AS THE FIRST TWO
+"   ARGUMENTS.
+" All element-indexes start from 0 (like in C or Java).
+" All string-indexes start from 0 (as it is for Vim built-in functions).
+"
+" Changes in 2.1.1:
+"   - Now all the operations work correctly with elements that have special
+"     chars in them.
+" Changes in 2.1.0:
+"   - Improved the read-only operations to work with regular expressions as
+"     patterns.
 " Changes in 2.0.3:
 "   - Fixed bugs in MvStrIndexOfElement(), MvIterHasNext() and MvCmpByPosition()
 " Changes in 2.0.3:
@@ -50,14 +61,20 @@
 "   - Prefixed all the global functions with "Mv" to avoid global name
 "       conflicts.
 "
+" TODO:
+"   The script now works with the regex patterns as separator, but it mostly
+"     works for readonly operations only. It may be possible to provide an
+"     additional argument to be used as the separator string which is different
+"     from separator pattern and matches separator pattern, for all the write
+"     operations.
+"   What if there are duplicate items. I think I am not taking care of it.
 "
-" ALMOST ALL OPERATIONS TAKE THE ARRAY AND THE SEPARATOR AS THE FIRST TWO
-"   ARGUMENTS.
-" All element-indexes start from 0 (like in C or Java).
-" All string-indexes start from 0 (as it is for Vim built-in functions).
 "
-"
-"
+
+if exists("loaded_multvals")
+  finish
+endif
+let loaded_multvals = 1
 
 
 " Adds an element and returns the new array.
@@ -66,7 +83,7 @@
 " Returns:
 "   the new array.
 function! MvAddElement(array, sep, ele)
-  let array = EnsureTrailingSeparator(a:array, a:sep)
+  let array = s:EnsureTrailingSeparator(a:array, a:sep)
   return array . a:ele . a:sep
 endfunction
 
@@ -78,11 +95,15 @@ endfunction
 " Returns:
 "   the new array.
 function! MvInsertElementAt(array, sep, ele, index)
-  let array = EnsureTrailingSeparator(a:array, a:sep)
+  let array = s:EnsureTrailingSeparator(a:array, a:sep)
   if a:index == 0
     return a:ele . a:sep . array
   else
     let strIndex = MvStrIndexOfElementAt(array, a:sep, a:index)
+    if strIndex < 0
+      return array
+    endif
+
     let sub1 = strpart(array, 0, strIndex)
     let sub2 = strpart(array, strIndex, strlen(array))
     return sub1 . a:ele . a:sep . sub2
@@ -96,7 +117,7 @@ endfunction
 " Returns:
 "   the new array.
 function! MvRemoveElement(array, sep, ele)
-  let array = EnsureTrailingSeparator(a:array, a:sep)
+  let array = s:EnsureTrailingSeparator(a:array, a:sep)
   let strIndex = MvStrIndexOfElement(array, a:sep, a:ele)
   " First remove this element.
   if strIndex != -1
@@ -116,8 +137,12 @@ endfunction
 " Returns:
 "   the new array.
 function! MvRemoveElementAt(array, sep, index)
-  let array = EnsureTrailingSeparator(a:array, a:sep)
+  let array = s:EnsureTrailingSeparator(a:array, a:sep)
   let strIndex = MvStrIndexOfElementAt(array, a:sep, a:index)
+  if strIndex < 0
+    return array
+  endif
+
   let sub1 = strpart(array, 0, strIndex)
   let sub2 = strpart(array, strIndex, strlen(array))
   let ind2 = match(sub2, a:sep)
@@ -134,12 +159,19 @@ endfunction
 " Returns:
 "   the number of elements that are present in the array.
 function! MvNumberOfElements(array, sep)
-  let array = EnsureTrailingSeparator(a:array, a:sep)
+  "let array = s:EnsureTrailingSeparator(a:array, a:sep)
+  let array = a:array
   let pat = '\(.\)\{-}\(' . a:sep . '\)\{-1\}'
 
-  " Remove everything except the separators and count the number of separators.
-  let mod = substitute(array, pat, '\2', 'g')
-  return strlen(mod)/strlen(a:sep)
+  " Replace all the elements with the separators with a single character and
+  " count the number of chars.
+  let mod = substitute(array, pat, 'x', 'g')
+  if strridx(mod, 'x') != (strlen(mod) - 1)
+    let nElements = strlen(matchstr(mod, '^x*')) + 1
+  else
+    let nElements = strlen(mod)
+  endif
+  return nElements
 endfunction
 
 
@@ -150,8 +182,67 @@ endfunction
 " Returns:
 "   the string index of the element, starts from 0.
 function! MvStrIndexOfElement(array, sep, ele)
-  let array = a:sep . EnsureTrailingSeparator(a:array, a:sep)
-  return match(array, a:sep.a:ele.a:sep)
+  let ele = s:Escape(a:ele)
+  if s:IsRegularExpression(a:sep)
+    if MvNumberOfElements(a:array, a:sep) == 1 &&
+        \ !s:HasTrailingSeparator(a:array, a:sep)
+      return (a:array == a:ele) ? 0 : -1
+    else
+      let index = match(a:array, a:sep . ele . a:sep)
+      " Take care of boundary cases.
+      if index == -1
+        let index = match(a:array, '^' . ele . a:sep)
+        if index == -1
+          let index = match(a:array, a:sep . ele . '$')
+          if index != -1
+            let matchStr = matchstr(a:array, a:sep . ele . '$')
+            let index = index + (strlen(matchStr) - strlen(a:ele))
+          endif
+        endif
+      else
+        let matchStr = matchstr(a:array, a:sep . ele . a:sep)
+        let index = index + (strlen(matchStr) - strlen(
+                    \ matchstr(matchStr, a:sep))) + 1
+      endif
+      return index
+    endif
+  else
+    let array = a:sep . s:EnsureTrailingSeparator(a:array, a:sep)
+    return match(array, a:sep . ele . a:sep)
+  endif
+endfunction
+
+
+" Returns the index after the element.
+" Params:
+"   ele - Element after which the index needs to be found.
+" Returns:
+"   the string index after the element including the separator. Starts from 0.
+"     Returns -1 if there is no such element or if it is the last index.
+function! MvStrIndexAfterElement(array, sep, ele)
+  let ele = s:Escape(a:ele)
+  if s:IsRegularExpression(a:sep)
+    if MvNumberOfElements(a:array, a:sep) == 1
+      return -1
+    else
+      let index = matchend(a:array, a:sep . ele . a:sep)
+      " Take care of boundary cases.
+      if index == -1
+        let index = matchend(a:array, '^' . ele . a:sep)
+      endif
+      if index >= strlen(a:array)
+        let index = -1
+      endif
+      return index
+    endif
+  else
+    let array = a:sep . s:EnsureTrailingSeparator(a:array, a:sep)
+    let index = matchend(array, a:sep . ele . a:sep)
+    if index >= strlen(array)
+      let index = -1
+    endif
+    return index - strlen(a:sep)
+  endif
 endfunction
 
 
@@ -169,8 +260,7 @@ function! MvStrIndexOfElementAt(array, sep, index)
   endif
 
   let prevEle = MvElementAt(a:array, a:sep, a:index - 1)
-  let strIndex = MvStrIndexOfElement(a:array, a:sep, prevEle)
-  return strIndex + strlen(prevEle) + strlen(a:sep)
+  return MvStrIndexAfterElement(a:array, a:sep, prevEle)
 endfunction
 
 
@@ -232,24 +322,52 @@ endfunction
 " Returns:
 "   the element at the given index.
 function! MvElementAt(array, sep, index)
-  let sub = ""
   if a:index < 0
-    return sub
+    return ""
   endif
   let index = a:index + 1
-  let array = EnsureTrailingSeparator(a:array, a:sep)
+  "let array = s:EnsureTrailingSeparator(a:array, a:sep)
+  let array = a:array
 
-  let pat1 = '\(\(.\{-}' . a:sep . '\)\{' . index . '}\).*$'
-  let sub1 = substitute(array, pat1, '\1','')
-  if strlen(sub1) != 0 && index > 1
-    let pat2 = '\(\(.\{-}' . a:sep . '\)\{' . (index - 1) . '}\).*$'
-    let sub2 = substitute(sub1, pat2, '\1','')
-    if strlen(sub2) != 0
-      let sub = strpart(sub1, strlen(sub2),
-              \ strlen(sub1) - strlen(sub2) - strlen(a:sep))
+  let nElements = MvNumberOfElements(array, a:sep)
+  if index > nElements
+    return ""
+  endif
+
+  let sub = ""
+  if nElements == 1
+    if ! s:HasTrailingSeparator(array, a:sep)
+      let sub = array
+    else
+      let sub = strpart(array, 0,
+                  \ (strlen(array) - strlen(matchstr(array, a:sep))))
     endif
   else
-    let sub = strpart(sub1, 0, strlen(sub1) - strlen(a:sep))
+    " If we don't have to support a regex as separator, the following alone
+    "   would suffice.
+    "let array = s:EnsureTrailingSeparator(a:array, a:sep)
+    let pat1 = '\(\(.\{-}' . a:sep . '\)\{' . index . '}\).*$'
+    " Extract upto this element.
+    let sub1 = substitute(array, pat1, '\1','')
+    if strlen(sub1) != 0 && index > 1
+      let pat2 = '\(\(.\{-}' . a:sep . '\)\{' . (index - 1) . '}\).*$'
+      " Extract upto the previous element.
+      let sub2 = substitute(sub1, pat2, '\1','')
+      if strlen(sub2) != 0
+        "let sub = strpart(sub1, strlen(sub2),
+                "\ strlen(sub1) - strlen(sub2) - strlen(a:sep))
+        let sub3 = strpart(sub1, strlen(sub2))
+        if s:HasTrailingSeparator(sub3, a:sep)
+          let sub = strpart(sub3, 0,
+                  \ (strlen(sub3) - strlen(matchstr(sub3, a:sep))))
+        else
+          let sub = sub3
+        endif
+      endif
+    else
+      let sub = strpart(sub1, 0,
+                  \ (strlen(sub1) - strlen(matchstr(sub1, a:sep))))
+    endif
   endif
   return sub
 endfunction
@@ -259,11 +377,25 @@ endfunction
 " Returns:
 "   the last element in the array.
 function! MvLastElement(array, sep)
-  let pat = '^.*\(.\+' . a:sep . '\)\{-1}$'
-  let array = EnsureTrailingSeparator(a:array, a:sep)
-  let sub = substitute(array, pat, '\1','')
-  if strlen(sub) > 0
-    let sub = strpart(sub, 0, strlen(sub) - strlen(a:sep))
+  if s:IsRegularExpression(a:sep)
+    let nElements = MvNumberOfElements(a:array, a:sep)
+    if nElements == 1
+      let sub = a:array
+    else
+      let sub = strpart(a:array,
+              \ MvStrIndexAfterElement(a:array, a:sep, nElements - 1))
+    endif
+    if s:HasTrailingSeparator(sub, a:sep)
+      let sub = strpart(sub, 0,
+              \ (strlen(sub) - strlen(matchstr(sub, a:sep))))
+    endif
+  else
+    let pat = '^.*\(.\+' . a:sep . '\)\{-1}$'
+    let array = s:EnsureTrailingSeparator(a:array, a:sep)
+    let sub = substitute(array, pat, '\1','')
+    if strlen(sub) > 0
+      let sub = strpart(sub, 0, strlen(sub) - strlen(a:sep))
+    endif
   endif
   return sub
 endfunction
@@ -305,7 +437,7 @@ endfunction
 " Returns:
 "   the new array.
 function! MvPullToBack(array, sep, ele)
-  let array = EnsureTrailingSeparator(MvRemoveElement(a:array, a:sep, a:ele),
+  let array = s:EnsureTrailingSeparator(MvRemoveElement(a:array, a:sep, a:ele),
         \ a:sep)
   let array = array . a:ele . a:sep
   return array
@@ -334,9 +466,9 @@ endfunction
 "                storage is alloted in the script name space (for Vim 6.0 or
 "                above) or in the global name space (for previous Vim versions).
 function! MvIterCreate(array, sep, iterName)
-  exec "let " . GetVarForIter(a:iterName) . "_prevIndex = 0"
-  exec "let " . GetVarForIter(a:iterName) . "_array = a:array"
-  exec "let " . GetVarForIter(a:iterName) . "_sep = a:sep"
+  exec "let " . s:GetVarForIter(a:iterName) . "_prevIndex = 0"
+  exec "let " . s:GetVarForIter(a:iterName) . "_array = a:array"
+  exec "let " . s:GetVarForIter(a:iterName) . "_sep = a:sep"
 endfunction
 
 
@@ -345,9 +477,9 @@ endfunction
 "   iterName - The name of the iterator to be destroyed that was previously
 "                created using MvIterCreate.
 function! MvIterDestroy(iterName)
-  exec "unlet " . GetVarForIter(a:iterName) . "_prevIndex"
-  exec "unlet " . GetVarForIter(a:iterName) . "_array"
-  exec "unlet " . GetVarForIter(a:iterName) . "_sep"
+  exec "unlet " . s:GetVarForIter(a:iterName) . "_prevIndex"
+  exec "unlet " . s:GetVarForIter(a:iterName) . "_array"
+  exec "unlet " . s:GetVarForIter(a:iterName) . "_sep"
 endfunction
 
 
@@ -360,16 +492,16 @@ endfunction
 " Returns:
 "   1 (for true) if has more elements or 0 (for false).
 function! MvIterHasNext(iterName)
-  if ! exists(GetVarForIter(a:iterName) . "_prevIndex")
+  if ! exists(s:GetVarForIter(a:iterName) . "_prevIndex")
     return 0
   endif
 
-  exec "let array = " . GetVarForIter(a:iterName) . "_array"
+  exec "let array = " . s:GetVarForIter(a:iterName) . "_array"
   if array == ""
     return 0
   endif
 
-  exec "let prevIndex = " . GetVarForIter(a:iterName) . "_prevIndex"
+  exec "let prevIndex = " . s:GetVarForIter(a:iterName) . "_prevIndex"
   if prevIndex >= 0
     return 1
   else
@@ -387,17 +519,17 @@ endfunction
 " Returns:
 "   the next element in the iterator (array).
 function! MvIterNext(iterName)
-  if ! exists(GetVarForIter(a:iterName) . "_prevIndex")
+  if ! exists(s:GetVarForIter(a:iterName) . "_prevIndex")
     return ""
   endif
 
-  exec "let prevIndex = " . GetVarForIter(a:iterName) . "_prevIndex"
-  exec "let array = " . GetVarForIter(a:iterName) . "_array"
-  exec "let sep = " . GetVarForIter(a:iterName) . "_sep"
+  exec "let prevIndex = " . s:GetVarForIter(a:iterName) . "_prevIndex"
+  exec "let array = " . s:GetVarForIter(a:iterName) . "_array"
+  exec "let sep = " . s:GetVarForIter(a:iterName) . "_sep"
   if prevIndex >= 0
-    let ele = NextElement(array, sep, prevIndex)
-    exec "let " . GetVarForIter(a:iterName) . "_prevIndex = " .
-        \ NextIndex(array, sep, prevIndex + 1)
+    let ele = s:NextElement(array, sep, prevIndex)
+    exec "let " . s:GetVarForIter(a:iterName) . "_prevIndex = " .
+        \ s:NextIndex(array, sep, prevIndex + 1)
   else
     let ele = ""
   endif
@@ -517,7 +649,7 @@ endfunction
 "   above for convenience.
 " Returns the next index after the specified index.
 " Returns a value less than 0 if there is no next index.
-function! NextIndex(array, sep, startPos)
+function! s:NextIndex(array, sep, startPos)
   " Because match() behaves this way.
   if a:startPos < 0
     let startPos = 0
@@ -544,13 +676,13 @@ endfunction
 " This is a low level functions. Use iterators and other functions defined
 "   above for convenience.
 " Returns the next element after the specified index.
-function! NextElement(array, sep, prevIndex)
+function! s:NextElement(array, sep, prevIndex)
   if a:prevIndex == 0
     let nextPos =  a:prevIndex
   else
     let nextPos =  a:prevIndex + strlen(a:sep)
   endif
-  let nextIndex = NextIndex(a:array, a:sep, nextPos)
+  let nextIndex = s:NextIndex(a:array, a:sep, nextPos)
   if nextIndex == -2
     let nextIndex = strlen(a:array) - strlen(a:sep)
   " Last element may not have a following separator.
@@ -563,7 +695,7 @@ function! NextElement(array, sep, prevIndex)
 endfunction
 
 
-function! GetVarForIter(iterName)
+function! s:GetVarForIter(iterName)
   if v:version < 600
     return "g:" . a:iterName
   else
@@ -573,13 +705,13 @@ endfunction
 
 
 " Make sure the array ha a trailing separator, returns the new array.
-function! EnsureTrailingSeparator(array, sep)
+function! s:EnsureTrailingSeparator(array, sep)
   if strlen(a:array) == 0
     return a:array
   endif
 
   let exists = 1
-  if match(a:array, a:sep . '$') == -1
+  if ! s:HasTrailingSeparator(a:array, a:sep)
     let array = a:array . a:sep
   else
     let array = a:array
@@ -588,89 +720,159 @@ function! EnsureTrailingSeparator(array, sep)
 endfunction
 
 
+function! s:HasTrailingSeparator(array, sep)
+  return match(a:array, a:sep . '$') != -1
+endfunction
+
+
+function! s:IsRegularExpression(str)
+  return match(a:str, '[.\\[\]{}*^$~]') != -1
+endfunction
+
+
+function! s:Escape(str)
+  return escape(a:str, "\\.[^$~")
+endfunction
+
+
 " Test functions.
-"function! TestPrintAll(array, sep)
+"function! MvTestPrintAll(array, sep)
 "  let prevIndex = 0
 "  let elementCount = 0
 "  while prevIndex >= 0
-"    call Assert(NextElement(a:array, a:sep, prevIndex), elementCount+1, "NextElement with array: " . a:array . " and sep: " . a:sep . " for " . (elementCount+1))
-"    let prevIndex = NextIndex(a:array, a:sep, prevIndex + 1)
+"    call s:Assert(s:NextElement(a:array, a:sep, prevIndex), elementCount+1, "s:NextElement with array: " . a:array . " and sep: " . a:sep . " for " . (elementCount+1))
+"    let prevIndex = s:NextIndex(a:array, a:sep, prevIndex + 1)
 "    let elementCount = elementCount + 1
 "  endwhile
 "endfunction
 "
 "
-"function! TestPrintAllWithIter(array, sep)
+"function! MvTestPrintAllWithIter(array, sep)
 "  let elementCount = 0
 "  call MvIterCreate(a:array, a:sep, "MyIter")
 "  while MvIterHasNext("MyIter")
-"    call Assert(MvIterNext("MyIter"), elementCount+1, "NextElement with array: " . a:array . " and sep: " . a:sep . " for " . (elementCount+1))
+"    call s:Assert(MvIterNext("MyIter"), elementCount+1, "s:NextElement with array: " . a:array . " and sep: " . a:sep . " for " . (elementCount+1))
 "    let elementCount = elementCount + 1
 "  endwhile
 "  call MvIterDestroy("MyIter")
 "endfunction
 "
-"function! RunTests()
-"  call TestPrintAll("1,2,3,4,", ",")
-"  call TestPrintAll("1,2,3,4", ",")
-"  call TestPrintAllWithIter("1,,2,,3,,4,,", ",,")
-"  call TestPrintAllWithIter("1,,2,,3,,4", ",,")
+"function! MvRunTests()
+"  call MvTestPrintAll("1,2,3,4,", ",")
+"  call MvTestPrintAll("1,2,3,4", ",")
+"  call MvTestPrintAllWithIter("1,,2,,3,,4,,", ",,")
+"  call MvTestPrintAllWithIter("1,,2,,3,,4", ",,")
 "
-"  call Assert(MvStrIndexOfElement("1,,2,,3,,4,,", ",,", "3"), 6, "MvStrIndexOfElement with array: 1,,2,,3,,4,, sep: ,, for element 3")
-"  call Assert(MvStrIndexOfElement("1,,2,,3,,4,,", ",,", "4"), 9, "MvStrIndexOfElement with array: 1,,2,,3,,4,, sep: ,, for element 4")
+"  "
+"  " First test the read-only operations.
+"  "
+"  call s:Assert(MvStrIndexOfElement("1,,2,,3,,4,,", ",,", "3"), 6, "MvStrIndexOfElement with array: 1,,2,,3,,4,, sep: ,, for element 3")
+"  call s:Assert(MvStrIndexOfElement("1,,2,,3,,4", ",,", "4"), 9, "MvStrIndexOfElement with array: 1,,2,,3,,4,, sep: ,, for element 4")
+"  call s:Assert(MvStrIndexOfElement("1,,2,,3,,4,,", ",,", "1"), 0, "MvStrIndexOfElement with array: 1,,2,,3,,4,, sep: ,, for element 1")
+"  " Test a fix for a previous identified bug.
+"  call s:Assert(MvStrIndexOfElement("11,,1,,2,,3,,", ",,", "1"), 4, "MvStrIndexOfElement with array: 11,,1,,2,,3,, sep: ,, for element 1")
 "
-"  call Assert(MvStrIndexOfElementAt("1,,2,,3,,4", ",,", 2), 6, "MvStrIndexOfElementAt with array: 1,,2,,3,,4,, sep: ,, for index 2")
-"  call Assert(MvStrIndexOfElementAt("1,,2,,3,,4,,", ",,", 3), 9, "MvStrIndexOfElementAt with array: 1,,2,,3,,4,, sep: ,, for index 3")
-"  call Assert(MvStrIndexOfElementAt("1,,2,,3,,4,,", ",,", 0), 0, "MvStrIndexOfElementAt with array: 1,,2,,3,,4,, sep: ,, for index 0")
+"  call s:Assert(MvStrIndexOfElementAt("1,,2,,3,,4", ",,", 2), 6, "MvStrIndexOfElementAt with array: 1,,2,,3,,4,, sep: ,, for index 2")
+"  call s:Assert(MvStrIndexOfElementAt("1,,2,,3,,4,,", ",,", 3), 9, "MvStrIndexOfElementAt with array: 1,,2,,3,,4,, sep: ,, for index 3")
+"  call s:Assert(MvStrIndexOfElementAt("1,,2,,3,,4,,", ",,", 0), 0, "MvStrIndexOfElementAt with array: 1,,2,,3,,4,, sep: ,, for index 0")
+"  call s:Assert(MvStrIndexOfElementAt("1,,", ",,", 0), 0, "MvStrIndexOfElementAt with array: 1,, sep: ,, for index 0")
+"  call s:Assert(MvStrIndexOfElementAt("1", ",,", 0), 0, "MvStrIndexOfElementAt with array: 1 sep: ,, for index 0")
 "
-"  call Assert(MvAddElement("1,,2,,3,,4", ",,", "5"), "1,,2,,3,,4,,5,,", "MvAddElement with array: 1,,2,,3,,4 sep: ,, for element 5")
-"  call Assert(MvAddElement("1,,2,,3,,4,,", ",,", "5"), "1,,2,,3,,4,,5,,", "MvAddElement with array: 1,,2,,3,,4,, sep: ,, for element 5")
+"  call s:Assert(MvElementAt("1,,2,,3,,4", ",,", 2), "3", "MvElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
+"  call s:Assert(MvElementAt("1,,2,,3,,4", ",,", 0), "1", "MvElementAt with array: 1,,2,,3,,4 sep: ,, for index 0")
 "
-"  call Assert(MvRemoveElement("1,,2,,3,,4", ",,", "3"), "1,,2,,4,,", "MvRemoveElement with array: 1,,2,,3,,4 sep: ,, for element 3")
-"  call Assert(MvRemoveElement("1,,2,,3,,4,,", ",,", "1"), "2,,3,,4,,", "MvRemoveElement with array: 1,,2,,3,,4,, sep: ,, for element 1")
+"  call s:Assert(MvIndexOfElement("1,,2,,3,,4", ",,", "3"), 2, "MvIndexOfElement with array: 1,,2,,3,,4 sep: ,, for element 3")
+"  call s:Assert(MvIndexOfElement("1,,2,,3,,4,,", ",,", "1"), 0, "MvIndexOfElement with array: 1,,2,,3,,4,, sep: ,, for element 0")
 "
-"  call Assert(MvRemoveElementAt("1,,2,,3,,4", ",,", 2), "1,,2,,4,,", "MvRemoveElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
-"  call Assert(MvRemoveElementAt("1,,2,,3,,4,,", ",,", 0), "2,,3,,4,,", "MvRemoveElementAt with array: 1,,2,,3,,4,, sep: ,, for index 0")
+"  call s:Assert(MvNumberOfElements("1,,2,,3,,4", ",,"), 4, "MvNumberOfElements with array: 1,,2,,3,,4 sep: ,,")
+"  call s:Assert(MvNumberOfElements("1,,2,,3,,4", ",,"), 4, "MvNumberOfElements with array: 1,,2,,3,,4 sep: ,,")
+"  call s:Assert(MvNumberOfElements("1,,", ",,"), 1, "MvNumberOfElements with array: 1,, sep: ,,")
+"  call s:Assert(MvNumberOfElements("1", ",,"), 1, "MvNumberOfElements with array: 1 sep: ,,")
 "
-"  call Assert(MvElementAt("1,,2,,3,,4", ",,", 2), "3", "MvElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
-"  call Assert(MvElementAt("1,,2,,3,,4", ",,", 0), "1", "MvElementAt with array: 1,,2,,3,,4 sep: ,, for index 0")
+"  call s:Assert(MvContainsElement("1,,2,,3,,4", ",,", "3"), 1, "MvContainsElement with array: 1,,2,,3,,4 sep: ,, for element 3")
+"  call s:Assert(MvContainsElement("1,,2,,3,,4,,", ",,", "1"), 1, "MvContainsElement with array: 1,,2,,3,,4,, sep: ,, for element 1")
+"  call s:Assert(MvContainsElement("1,,2,,3,,4,,", ",,", "0"), 0, "MvContainsElement with array: 1,,2,,3,,4,, sep: ,, for element 0")
 "
-"  call Assert(MvPushToFront("1,,2,,3,,4", ",,", "3"), "3,,1,,2,,4,,", "MvPushToFront with array: 1,,2,,3,,4 sep: ,, for element 3")
-"  call Assert(MvPushToFront("1,,2,,3,,4,,", ",,", "4"), "4,,1,,2,,3,,", "MvPushToFront with array: 1,,2,,3,,4,, sep: ,, for element 4")
+"  call s:Assert(MvLastElement("1,,2,,3,,4", ",,"), "4", "MvLastElement with array: 1,,2,,3,,4 sep: ,,")
+"  call s:Assert(MvLastElement("1,,2,,3,,4,,", ",,"), "4", "MvLastElement with array: 1,,2,,3,,4,, sep: ,,")
 "
-"  call Assert(MvPushToFrontElementAt("1,,2,,3,,4", ",,", 2), "3,,1,,2,,4,,", "MvPushToFrontElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
-"  call Assert(MvPushToFrontElementAt("1,,2,,3,,4,,", ",,", 3), "4,,1,,2,,3,,", "MvPushToFrontElementAt with array: 1,,2,,3,,4,, sep: ,, for index 3")
+"  "
+"  " Now test the write operations.
+"  "
+"  call s:Assert(MvAddElement("1,,2,,3,,4", ",,", "5"), "1,,2,,3,,4,,5,,", "MvAddElement with array: 1,,2,,3,,4 sep: ,, for element 5")
+"  call s:Assert(MvAddElement("1,,2,,3,,4,,", ",,", "5"), "1,,2,,3,,4,,5,,", "MvAddElement with array: 1,,2,,3,,4,, sep: ,, for element 5")
 "
-"  call Assert(MvPullToBack("1,,2,,3,,4", ",,", "3"), "1,,2,,4,,3,,", "MvPullToBack with array: 1,,2,,3,,4 sep: ,, for element 3")
-"  call Assert(MvPullToBack("1,,2,,3,,4,,", ",,", "1"), "2,,3,,4,,1,,", "MvPullToBack with array: 1,,2,,3,,4,, sep: ,, for element 1")
+"  call s:Assert(MvRemoveElement("1,,2,,3,,4", ",,", "3"), "1,,2,,4,,", "MvRemoveElement with array: 1,,2,,3,,4 sep: ,, for element 3")
+"  call s:Assert(MvRemoveElement("1,,2,,3,,4,,", ",,", "1"), "2,,3,,4,,", "MvRemoveElement with array: 1,,2,,3,,4,, sep: ,, for element 1")
 "
-"  call Assert(MvPullToBackElementAt("1,,2,,3,,4", ",,", 2), "1,,2,,4,,3,,", "MvPullToBackElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
-"  call Assert(MvPullToBackElementAt("1,,2,,3,,4", ",,", 0), "2,,3,,4,,1,,", "MvPullToBackElementAt with array: 1,,2,,3,,4 sep: ,, for index 0")
+"  call s:Assert(MvRemoveElementAt("1,,2,,3,,4", ",,", 2), "1,,2,,4,,", "MvRemoveElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
+"  call s:Assert(MvRemoveElementAt("1,,2,,3,,4,,", ",,", 0), "2,,3,,4,,", "MvRemoveElementAt with array: 1,,2,,3,,4,, sep: ,, for index 0")
 "
-"  call Assert(EnsureTrailingSeparator("1,,2,,3,,4,,", ",,"), "1,,2,,3,,4,,", "EnsureTrailingSeparator with array: 1,,2,,3,,4,, sep: ,,")
-"  call Assert(EnsureTrailingSeparator("1,,2,,3,,4", ",,"), "1,,2,,3,,4,,", "EnsureTrailingSeparator with array: 1,,2,,3,,4 sep: ,,")
+"  call s:Assert(MvPushToFront("1,,2,,3,,4", ",,", "3"), "3,,1,,2,,4,,", "MvPushToFront with array: 1,,2,,3,,4 sep: ,, for element 3")
+"  call s:Assert(MvPushToFront("1,,2,,3,,4,,", ",,", "4"), "4,,1,,2,,3,,", "MvPushToFront with array: 1,,2,,3,,4,, sep: ,, for element 4")
 "
-"  call Assert(MvIndexOfElement("1,,2,,3,,4", ",,", "3"), 2, "MvIndexOfElement with array: 1,,2,,3,,4 sep: ,, for element 3")
-"  call Assert(MvIndexOfElement("1,,2,,3,,4,,", ",,", "1"), 0, "MvIndexOfElement with array: 1,,2,,3,,4,, sep: ,, for element 0")
+"  call s:Assert(MvPushToFrontElementAt("1,,2,,3,,4", ",,", 2), "3,,1,,2,,4,,", "MvPushToFrontElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
+"  call s:Assert(MvPushToFrontElementAt("1,,2,,3,,4,,", ",,", 3), "4,,1,,2,,3,,", "MvPushToFrontElementAt with array: 1,,2,,3,,4,, sep: ,, for index 3")
 "
-"  call Assert(MvInsertElementAt("1,,2,,3,,4", ",,", "5", 2), "1,,2,,5,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4 sep: ,, for element 5 at index 2")
-"  call Assert(MvInsertElementAt("1,,2,,3,,4,,", ",,", "5", 0), "5,,1,,2,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4,, sep: ,, for element 5 at index 0")
+"  call s:Assert(MvPullToBack("1,,2,,3,,4", ",,", "3"), "1,,2,,4,,3,,", "MvPullToBack with array: 1,,2,,3,,4 sep: ,, for element 3")
+"  call s:Assert(MvPullToBack("1,,2,,3,,4,,", ",,", "1"), "2,,3,,4,,1,,", "MvPullToBack with array: 1,,2,,3,,4,, sep: ,, for element 1")
 "
-"  call Assert(MvNumberOfElements("1,,2,,3,,4", ",,"), 4, "MvNumberOfElements with array: 1,,2,,3,,4 sep: ,,")
-"  call Assert(MvNumberOfElements("1,,2,,3,,4,,", ",,"), 4, "MvNumberOfElements with array: 1,,2,,3,,4,, sep: ,,")
+"  call s:Assert(MvPullToBackElementAt("1,,2,,3,,4", ",,", 2), "1,,2,,4,,3,,", "MvPullToBackElementAt with array: 1,,2,,3,,4 sep: ,, for index 2")
+"  call s:Assert(MvPullToBackElementAt("1,,2,,3,,4", ",,", 0), "2,,3,,4,,1,,", "MvPullToBackElementAt with array: 1,,2,,3,,4 sep: ,, for index 0")
 "
-"  call Assert(MvContainsElement("1,,2,,3,,4", ",,", "3"), 1, "MvContainsElement with array: 1,,2,,3,,4 sep: ,, for element 3")
-"  call Assert(MvContainsElement("1,,2,,3,,4,,", ",,", "1"), 1, "MvContainsElement with array: 1,,2,,3,,4,, sep: ,, for element 1")
-"  call Assert(MvContainsElement("1,,2,,3,,4,,", ",,", "0"), 0, "MvContainsElement with array: 1,,2,,3,,4,, sep: ,, for element 0")
+"  call s:Assert(s:EnsureTrailingSeparator("1,,2,,3,,4,,", ",,"), "1,,2,,3,,4,,", "s:EnsureTrailingSeparator with array: 1,,2,,3,,4,, sep: ,,")
+"  call s:Assert(s:EnsureTrailingSeparator("1,,2,,3,,4", ",,"), "1,,2,,3,,4,,", "s:EnsureTrailingSeparator with array: 1,,2,,3,,4 sep: ,,")
 "
-"  call Assert(MvLastElement("1,,2,,3,,4", ",,"), "4", "MvLastElement with array: 1,,2,,3,,4 sep: ,,")
-"  call Assert(MvLastElement("1,,2,,3,,4,,", ",,"), "4", "MvLastElement with array: 1,,2,,3,,4,, sep: ,,")
+"  call s:Assert(MvInsertElementAt("1,,2,,3,,4", ",,", "5", 2), "1,,2,,5,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4 sep: ,, for element 5 at index 2")
+"  call s:Assert(MvInsertElementAt("1,,2,,3,,4,,", ",,", "5", 0), "5,,1,,2,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4,, sep: ,, for element 5 at index 0")
 "
-"  call Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", "c", "Please press Enter:", "", 0), "c", "MvPromptForElement with array a,,b,,c,,d,, for default element c")
-"  call Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", 1, "Please press Enter:", "", 0), "b", "MvPromptForElement with array a,,b,,c,,d,, for default index 1")
+"  call s:Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", "c", "Please press Enter:", "", 0), "c", "MvPromptForElement with array a,,b,,c,,d,, for default element c")
+"  call s:Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", 1, "Please press Enter:", "", 0), "b", "MvPromptForElement with array a,,b,,c,,d,, for default index 1")
+"
+"  "
+"  " Test read-only operations using a regex-pattern as a separator.
+"  "
+"
+"  call s:Assert(MvNumberOfElements("1xxxx2xxx3x4xxxx", 'x\+'), 4, "MvNumberOfElements with array: 1xxxx2xxx3x4xxxx")
+"  call s:Assert(MvNumberOfElements("1xxxx2xxx3x4", 'x\+'), 4, "MvNumberOfElements with array: 1xxxx2xxx3x4")
+"  call s:Assert(MvNumberOfElements("1xxxx", 'x\+'), 1, "MvNumberOfElements with array: 1xxxx")
+"  call s:Assert(MvNumberOfElements("1", 'x\+'), 1, "MvNumberOfElements with array: 1")
+"
+"  call s:Assert(MvStrIndexOfElement("1xxxx2xxx3x4xxxx", 'x\+', "3"), 9, "MvStrIndexOfElement with array: 1xxxx2xxx3x4xxxx for element 3")
+"  call s:Assert(MvStrIndexOfElement("1xxxx2xxx3x4", 'x\+', "3"), 9, "MvStrIndexOfElement with array: 1xxxx2xxx3x4 for element 3")
+"  call s:Assert(MvStrIndexOfElement("1xxxx2xxx3x4", 'x\+', "4"), 11, "MvStrIndexOfElement with array: 1xxxx2xxx3x4 for element 4")
+"  call s:Assert(MvStrIndexOfElement("1xxxx2xxx3x4", 'x\+', "1"), 0, "MvStrIndexOfElement with array: 1xxxx2xxx3x4 for element 1")
+"  call s:Assert(MvStrIndexOfElement("1xxxx", 'x\+', "1"), 0, "MvStrIndexOfElement with array: 1xxxx for element 1")
+"  call s:Assert(MvStrIndexOfElement("1", 'x\+', "1"), 0, "MvStrIndexOfElement with array: 1 for element 1")
+"
+"  call s:Assert(MvStrIndexOfElementAt("1xxxx2xxx3x4xxxx", 'x\+', 2), 9, "MvStrIndexOfElementAt with array: 1xxxx2xxx3x4xxxx for index 2")
+"  call s:Assert(MvStrIndexOfElementAt("1xxxx2xxx3x4xxxx", 'x\+', 0), 0, "MvStrIndexOfElementAt with array: 1xxxx2xxx3x4xxxx for index 1")
+"  call s:Assert(MvStrIndexOfElementAt("1xxxx2xxx3x4xxxx", 'x\+', 3), 11, "MvStrIndexOfElementAt with array: 1xxxx2xxx3x4xxxx for index 3")
+"  call s:Assert(MvStrIndexOfElementAt("1xxxx", 'x\+', 0), 0, "MvStrIndexOfElementAt with array: 1xxxx for index 0")
+"  call s:Assert(MvStrIndexOfElementAt("1", 'x\+', 0), 0, "MvStrIndexOfElementAt with array: 1 for index 0")
+"
+"  call s:Assert(MvElementAt("1xxxx2xxx3x4xxxx", 'x\+', 2), "3", "MvElementAt with array: 1xxxx2xxx3x4xxxx for index 2")
+"  call s:Assert(MvElementAt("1xxxx2xxx3x4", 'x\+', 0), "1", "MvElementAt with array: 1xxxx2xxx3x4 for index 0")
+"  call s:Assert(MvElementAt("1xxxx", 'x\+', 0), "1", "MvElementAt with array: 1xxxx for index 0")
+"  call s:Assert(MvElementAt("1", 'x\+', 0), "1", "MvElementAt with array: 1 for index 0")
+"
+"  call s:Assert(MvIndexOfElement("1xxxx2xxx3x4xxxx", 'x\+', "3"), 2, "MvIndexOfElement with array: 1xxxx2xxx3x4xxxx for element 3")
+"  call s:Assert(MvIndexOfElement("1xxxx2xxx3x4", 'x\+', "4"), 3, "MvIndexOfElement with array: 1xxxx2xxx3x4 for element 4")
+"  call s:Assert(MvIndexOfElement("1xxxx", 'x\+', "1"), 0, "MvIndexOfElement with array: 1xxxx for element 1")
+"  call s:Assert(MvIndexOfElement("1", 'x\+', "1"), 0, "MvIndexOfElement with array: 1 for element 1")
+"
+"  call s:Assert(MvContainsElement("1xxxx2xxx3x4xxxx", 'x\+', "3"), 1, "MvContainsElement with array: 1xxxx2xxx3x4xxxx for element 3")
+"  call s:Assert(MvContainsElement("1xxxx2xxx3x4", 'x\+', "4"), 1, "MvContainsElement with array: 1xxxx2xxx3x4 for element 4")
+"  call s:Assert(MvContainsElement("1xxxx", 'x\+', "1"), 1, "MvContainsElement with array: 1xxxx for element 1")
+"  call s:Assert(MvContainsElement("1", 'x\+', "1"), 1, "MvContainsElement with array: 1 for element 1")
+"
+"  call s:Assert(MvLastElement("1xxxx2xxx3x4xxxx", 'x\+'), "4", "MvLastElement with array: 1xxxx2xxx3x4xxxx")
+"  call s:Assert(MvLastElement("1xxxx2xxx3x4", 'x\+'), "4", "MvLastElement with array: 1xxxx2xxx3x4")
+"  call s:Assert(MvLastElement("1xxxx", 'x\+'), "1", "MvLastElement with array: 1xxxx")
+"  call s:Assert(MvLastElement("1", 'x\+'), "1", "MvLastElement with array: 1")
 "endfunction
 "
-"function! Assert(actual, expected, msg)
+"function! s:Assert(actual, expected, msg)
 "  if a:actual != a:expected
 "    call input("Failed: " . a:msg. ": actual: " . a:actual . " expected: " . a:expected)
 "  endif

@@ -1,13 +1,13 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Modified: 21-Dec-2002 @ 10:32
+" Last Modified: 30-Jan-2003 @ 15:36
 " Requires: Vim-6.0 or higher, genutils.vim(1.2) for sorting support.
-" Version: 3.0.2
+" Version: 3.1.1
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
 " Download From:
-"     http://vim.sourceforge.net/script.php?script_id=171
+"     http://www.vim.org/script.php?script_id=171
 " Summary Of Features:
 "   Writer Functions:
 "       MvAddElement
@@ -57,9 +57,10 @@
 "   - The separator can be any regular expression. However, if a regular
 "     expression is used as a separtor, you need to pass in a second separator,
 "     which is a plain string that guarantees to match the separator regular
-"     expression, as an additional argument. When the array needs to be
-"     modified (which is internally done by some of the reader functions also)
-"     this sample separator is used to preserve the integrity of the array.
+"     expression, as an additional argument (which was not the case with
+"     earlier versions). When the array needs to be modified (which is
+"     internally done by some of the reader functions also) this sample
+"     separator is used to preserve the integrity of the array.
 "   - If you for example want to go over the words in a sentence, then an easy
 "     way would be to treat the sentence as an array with '\s\+' as a
 "     separator pattern. Be sure not to have zero-width expressions in the
@@ -69,7 +70,7 @@
 "     Ex Usage:
 "       " The below pattern avoids protected comma's from getting treated as
 "       separators.
-"       call MvIterCreate(&tags, "\\\@<!\(\\\\\)*\zs,", "Tags")
+"       call MvIterCreate(&tags, "\\\@<!\(\\\\\)*\zs,", "Tags", ',')
 "     	while MvIterHasNext("Tags")
 "     	  call input("Next element: " . MvIterNext("Tags"))
 "     	endwhile
@@ -112,9 +113,10 @@
 "       conflicts.
 "
 " TODO:
+"   Need a function to extract patterns, MvElementLikePattern().
 "   More testing is required for regular expressions as separators.
 "   Some performance improvement should be possible in: MvElementAt,
-"     MvSwapElementsAt, MvQSortElements
+"     MvSwapElementsAt, MvQSortElements, MvPushToFront (and friends)
 "   Using '\%(\s\|\n\)\+' as separator pattern for a block of text containing
 "     newlines doesn't detect newlines as a separtor.
 "
@@ -125,6 +127,10 @@ if exists("loaded_multvals")
 endif
 let loaded_multvals = 1
 
+" Make sure line-continuations won't cause any problem. This will be restored
+"   at the end
+let s:save_cpo = &cpo
+set cpo&vim
 
 function! s:MyScriptId()
   map <SID>xx <SID>xx
@@ -133,6 +139,7 @@ function! s:MyScriptId()
   return substitute(s:sid, "xx$", "", "")
 endfunction
 let s:myScriptId = s:MyScriptId()
+delfunction s:MyScriptId
 
 " Writer functions {{{
 
@@ -438,12 +445,12 @@ function! MvQSortElements(array, sep, cmp, direction, ...)
   " Finally reconstruct the array from the sorted indexes.
   let array = ''
   let nextEle = ''
-  call MvIterCreate(s:sortArrayIndexes, ',', 'MvSortElements', sep)
-  while MvIterHasNext('MvSortElements')
-    let nextEle = MvElementAt(a:array, a:sep, MvIterNext('MvSortElements'), sep)
+  call MvIterCreate(s:sortArrayIndexes, ',', 'MvQSortElements', sep)
+  while MvIterHasNext('MvQSortElements')
+    let nextEle = MvElementAt(a:array, a:sep, MvIterNext('MvQSortElements'), sep)
     let array = MvAddElement(array, sep, nextEle)
   endwhile
-  call MvIterDestroy('MvSortElements')
+  call MvIterDestroy('MvQSortElements')
   return array
 endfunction
 
@@ -1218,5 +1225,9 @@ endfunction
 "  call s:Assert(MvQSortElements('e,,a,,,d,,b,f,,,,c,,g', ',\+', 's:CmpByString', 1, ','), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
 "endfunction
 " Testing }}}
+
+" Restore cpo.
+let &cpo = s:save_cpo
+unlet s:save_cpo
 
 " vim6: fdm=marker

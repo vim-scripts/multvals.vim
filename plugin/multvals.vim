@@ -1,14 +1,19 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim@yahoo.com>
-" Last Modified: 15-Feb-2002 @ 13:13
+" Last Modified: 18-Jun-2002 @ 16:43
 " Requires: Vim-6.0 or higher
-" Version: 2.1.2
+" Version: 2.3.2
+" Licence: This program is free software; you can redistribute it and/or
+"          modify it under the terms of the GNU General Public License.
+"          See http://www.gnu.org/copyleft/gpl.txt 
 " Environment:
 "   Adds
 "       MvAddElement
 "       MvInsertElementAt
 "       MvRemoveElement
 "       MvRemoveElementAt
+"       MvRemoveElementAll
+"       MvReplaceElementAt
 "       MvNumberOfElements
 "       MvStrIndexOfElement
 "       MvStrIndexAfterElement
@@ -155,6 +160,37 @@ function! MvRemoveElementAt(array, sep, index)
     let sub2 = strpart(sub2, ind2 + strlen(a:sep), strlen(sub2) - ind2 - strlen(a:sep))
   endif
   return sub1 . sub2
+endfunction
+
+
+" Remove the all occurances of element in array.
+" Contributed by Steve Hall <digitect at mindspring.com>
+" Params:
+"   ele - Element to be removed from the array.
+" Returns:
+"   the new array.
+function! MvRemoveElementAll(array, sep, ele)
+  let array = a:array
+  while MvContainsElement(array, a:sep, a:ele) == 1
+    let array = MvRemoveElement(array, a:sep, a:ele)
+  endwhile
+  return array
+endfunction
+
+
+" Replace the element at index with element
+" Contributed by Steve Hall <digitect at mindspring.com>
+" Params:
+"   ele - The new element to replace in the array.
+"   index - The index of the element that needs to be replaced.
+" Returns:
+"   the new array.
+function! MvReplaceElementAt(array, sep, ele, index)
+  " insert element
+  let array = MvInsertElementAt(a:array, a:sep, a:ele, a:index)
+  " remove element following
+  let array = MvRemoveElementAt(array, a:sep, a:index + 1)
+  return array
 endfunction
 
 

@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim@yahoo.com>
-" Last Modified: 11-Jan-2002 @ 19:54
+" Last Modified: 28-Jan-2002 @ 19:09
 " Requires: Vim-5.6 or higher
-" Version: 2.0.4
+" Version: 2.0.5
 " Environment:
 "   Adds
 "       MvAddElement
@@ -41,6 +41,8 @@
 "     endwhile
 "     call MvIterDestroy("Tags")
 "
+" Changes in 2.0.3:
+"   - Fixed bugs in MvStrIndexOfElement(), MvIterHasNext() and MvCmpByPosition()
 " Changes in 2.0.3:
 "   - New functions were added.
 "   - The order of arguments for MvIterCreate has been changed for the sake of
@@ -148,12 +150,8 @@ endfunction
 " Returns:
 "   the string index of the element, starts from 0.
 function! MvStrIndexOfElement(array, sep, ele)
-  let index = match(a:array, a:ele.a:sep)
-  " Take care of missing separator at the end.
-  if index == -1
-    let index = match(a:array, a:ele."$")
-  endif
-  return index
+  let array = a:sep . EnsureTrailingSeparator(a:array, a:sep)
+  return match(array, a:sep.a:ele.a:sep)
 endfunction
 
 
@@ -366,6 +364,11 @@ function! MvIterHasNext(iterName)
     return 0
   endif
 
+  exec "let array = " . GetVarForIter(a:iterName) . "_array"
+  if array == ""
+    return 0
+  endif
+
   exec "let prevIndex = " . GetVarForIter(a:iterName) . "_prevIndex"
   if prevIndex >= 0
     return 1
@@ -409,14 +412,15 @@ endfunction
 "   ele2 - second element to be compared by position.
 "   direction - the direction of sort, used for determining the return value.
 " Returns:
-"   direction if ele2 comes before ele1, and -direction otherwise.
+"   direction if ele2 comes before ele1 (for no swap), and 0 or -direction
+"     otherwise (for swap).
 function! MvCmpByPosition(array, sep, ele1, ele2, direction)
   let strIndex1 = MvStrIndexOfElement(a:array, a:sep, a:ele1)
   let strIndex2 = MvStrIndexOfElement(a:array, a:sep, a:ele2)
 
   if (strIndex1 == -1) && (strIndex2 != -1)
     let strIndex1 = strIndex2 + a:direction
-  elseif (strIndex2 == -1) && (strIndex2 != -1)
+  elseif (strIndex1 != -1) && (strIndex2 == -1)
     let strIndex2 = strIndex1 + a:direction
   endif
 
@@ -435,7 +439,10 @@ endfunction
 "   user will be prompted with a list of choices to make, each corresponding to
 "   an element in the array. User can enter the numer of the element or the
 "   element itself as a choice. Take a look at the remcmd.vim script at
-"   vim.sf.net for an example usage.
+"   vim.sf.net for an example usage. Because of the internal implementation,
+"   there is a limit on what characters may be contained in the array elements.
+"   Some characters that result in syntax errors are single-quote,
+"   double-quote, semi-colon etc.
 " Params:
 "   default - The default value for the selection. Default can be the
 "               element-index or the element itself.
@@ -477,7 +484,7 @@ function! MvPromptForElement(array, sep, default, msg, skip, useDialog)
 
   if !exists("array" . a:default)
     let default = ""
-  elseif match(a:default, '^\d\+$') == -1
+  elseif a:default != "" && match(a:default, '^\d\+$') == -1
     let default = array{a:default}
   else
     let default = a:default
@@ -492,7 +499,7 @@ function! MvPromptForElement(array, sep, default, msg, skip, useDialog)
 
     if selection == ""
       let selectedElement = ""
-    elseif match(selection, '^\d\+$') != -1 && exists("array" . selection)
+    elseif selection != "" && match(selection, '^\d\+$') != -1 && exists("array" . selection)
       let selectedElement = array{selection}
     elseif exists("array" . selection)
       let selectedElement = selection

@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna Dara (hari_vim at yahoo dot com)
-" Last Modified: 17-May-2004 @ 19:38
+" Last Modified: 13-Sep-2004 @ 18:09
 " Requires: Vim-6.0, genutils.vim(1.2) for sorting support.
-" Version: 3.6.1
+" Version: 3.8.0
 " Acknowledgements:
 "   - MvRemoveElementAll was contributed by Steve Hall
 "     "digitect at mindspring dot com"
@@ -105,6 +105,11 @@
 "   All element-indexes start from 0 (like in C++ or Java).
 "   All string-indexes start from 0 (as it is for Vim built-in functions).
 "
+" Changes in 3.8:
+"   - Fixed bugs in the *StrIndex* functions, such that when the element is
+"     not found, they always return the contracted -1 (instead of any -ve
+"     value). This will fix problems with a number of other functions that
+"     depend on them (such as MvPushToFront reported by Thomas Link).
 " Changes in 3.6:
 "   - Changed MvNumberOfElements() to use "\r" as the temporary replacement
 "     character instead of "x" which was more likely to occur at the end of
@@ -164,7 +169,6 @@
 "       conflicts.
 "
 " TODO:
-"   - 'ic' impacts multvals.
 "   - Why is MvElementAt('a\|b\\|c|d', '\\\@<!\%(\\\\\)*|', <index>, '|') not
 "     working as expected (MvNumberOfElements reports correctly)?
 "   - More testing is required for regular expressions as separators.
@@ -186,7 +190,7 @@ if v:version < 600
   echomsg 'multvals: You need at least Vim 6.0'
   finish
 endif
-let loaded_multvals = 306
+let loaded_multvals = 308
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -609,8 +613,9 @@ function! s:MvStrIndexOfElementImpl(array, sep, ele, asPattern, ...)
   endif
   let array = sep . s:EnsureTrailingSeparator(a:array, a:sep, sep)
   let sub = s:Matchstr(array, a:sep . ele . a:sep, 0)
-  return stridx(array, sub) + strlen(s:Matchstr(sub, '^' . a:sep, 0)) -
+  let idx = stridx(array, sub) + strlen(s:Matchstr(sub, '^' . a:sep, 0)) -
         \ strlen(sep)
+  return idx < 0 ? -1 : idx
 endfunction
 
 
@@ -645,8 +650,10 @@ function! s:MvStrIndexAfterElementImpl(array, sep, ele, asPattern, ...)
   if index == strlen(array) && ! s:HasTrailingSeparator(a:array, a:sep)
     let index = index - strlen(sep)
   endif
-  if index != -1
-    return index - strlen(sep)
+  if index >= 0
+    let index = index - strlen(sep)
+  else
+    let index = -1
   endif
   return index
 endfunction

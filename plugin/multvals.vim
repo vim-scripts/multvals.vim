@@ -1,11 +1,13 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim@yahoo.com>
-" Last Modified: 18-Jun-2002 @ 16:43
-" Requires: Vim-6.0 or higher
-" Version: 2.3.2
+" Last Modified: 26-Nov-2002 @ 11:09
+" Requires: Vim-6.0 or higher, genutils.vim(1.2) for sorting support.
+" Version: 2.4.0
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
+" Download From:
+"     http://vim.sourceforge.net/script.php?script_id=171
 " Environment:
 "   Adds
 "       MvAddElement
@@ -28,32 +30,48 @@
 "       MvPullToBackElementAt
 "       MvRotateLeftAt
 "       MvRotateRightAt
+"       MvSwapElementsAt
+"       MvQSortElements
 "       MvIterCreate
 "       MvIterDestroy
 "       MvIterHasNext
 "       MvIterNext
 "       MvCmpByPosition
 "       MvPromptForElement
+"       MvPromptForElement2
 "     global functions.
 "
 " Usage:
-"   An array is nothing but a string of multiple values separated by a pattern.
-"     The simplest example being Vim's multi-value variables such as tags. You
-"     can use the MvAddElement() function to create an array. However, there is
-"     nothing special about this function, you can as well make up the string
-"     by simply concatinating elements with the chosen pattern as a separator.
+"   - An array is nothing but a string of multiple values separated by a
+"     pattern.  The simplest example being Vim's multi-value variables such as
+"     tags. You can use the MvAddElement() function to create an array.
+"     However, there is nothing special about this function, you can as well
+"     make up the string by simply concatinating elements with the chosen
+"     pattern as a separator.
+"   - The pattern can be any regular expression as long as you use the array for
+"     only read-only purposes. If you for example want to go over the words in
+"     a sentence, then an easy way would be to treat the sentence as an array
+"     with '\s\+' as a separator pattern.
+"   - Suggested usage to go over the elements is to use the iterater functions
+"     as shows in the below example
 "   Ex Usage:
-"     call MvIterCreate(&tags, ",", "Tags")
-"     while MvIterHasNext("Tags")
-"       call input("Next element: " . MvIterNext("Tags"))
-"     endwhile
-"     call MvIterDestroy("Tags")
+"       call MvIterCreate(&tags, ",", "Tags")
+"     	while MvIterHasNext("Tags")
+"     	  call input("Next element: " . MvIterNext("Tags"))
+"     	endwhile
+"     	call MvIterDestroy("Tags")
 "
 " ALMOST ALL OPERATIONS TAKE THE ARRAY AND THE SEPARATOR AS THE FIRST TWO
 "   ARGUMENTS.
-" All element-indexes start from 0 (like in C or Java).
+" All element-indexes start from 0 (like in C++ or Java).
 " All string-indexes start from 0 (as it is for Vim built-in functions).
 "
+" Changes in 2.3:
+"   - A variant of MvPromptForElement to specify the number of columns that
+"     you want the elements to be formatted in.
+"   - New functions MvQSortElements() and MvSwapElementsAt() 
+"   - Worked-around a bug in vim that effects MvElementAt() for last element
+"     in a large array.
 " Changes in 2.1.1:
 "   - Now all the operations work correctly with elements that have special
 "     chars in them.
@@ -75,7 +93,15 @@
 "     additional argument to be used as the separator string which is different
 "     from separator pattern and matches separator pattern, for all the write
 "     operations.
+"   Many writer functions can also be modified to work with pattern as a
+"     separator.
 "   What if there are duplicate items. I think I am not taking care of it.
+"   MvRemoveElement and MvRemoveElementAt seem to be very similar, but use
+"     different logic.
+"   Some performance improvement should be possible in: MvElementAt,
+"     MvSwapElementsAt, MvQSortElements
+"   Using '\%(\s\|\n\)\+' as separator pattern for a block of text containing
+"     newlines doesn't detect newlines as a separtor.
 "
 "
 
@@ -83,6 +109,15 @@ if exists("loaded_multvals")
   finish
 endif
 let loaded_multvals = 1
+
+
+function! s:MyScriptId()
+  map <SID>xx <SID>xx
+  let s:sid = maparg("<SID>xx")
+  unmap <SID>xx
+  return substitute(s:sid, "xx$", "", "")
+endfunction
+let s:myScriptId = s:MyScriptId()
 
 
 " Adds an element and returns the new array.
@@ -157,7 +192,8 @@ function! MvRemoveElementAt(array, sep, index)
   if ind2 < 0
     return array
   else
-    let sub2 = strpart(sub2, ind2 + strlen(a:sep), strlen(sub2) - ind2 - strlen(a:sep))
+    let sub2 = strpart(sub2, ind2 + strlen(a:sep),
+	  \ strlen(sub2) - ind2 - strlen(a:sep))
   endif
   return sub1 . sub2
 endfunction
@@ -419,6 +455,24 @@ function! MvElementAt(array, sep, index)
       let sub = strpart(array, 0,
                   \ (strlen(array) - strlen(matchstr(array, a:sep))))
     endif
+
+  " Work-around for vim taking too long for last element, if the string is
+  "   long.
+  elseif index > 1 && index == nElements " Last element.
+    " Extract upto the previous element.
+    let pat1 = '\(\(.\{-}' . a:sep . '\)\{' . (index - 1) . '}\).*$'
+    let sub1 = substitute(array, pat1, '\1','')
+    if strlen(sub1) != 0
+      let sub2 = strpart(array, strlen(sub1))
+      if strlen(sub2) != 0
+	let ind = match(sub2, a:sep)
+	if ind == -1
+	  let sub = sub2
+	else
+	  let sub = strpart(sub2, 0, ind)
+	endif
+      endif
+    endif
   else
     " If we don't have to support a regex as separator, the following alone
     "   would suffice.
@@ -531,6 +585,90 @@ endfunction
 function! MvPullToBackElementAt(array, sep, index)
   let ele = MvElementAt(a:array, a:sep, a:index)
   return MvPullToBack(a:array, a:sep, ele)
+endfunction
+
+
+" Swaps the elements at the specified indexes.
+" Params:
+"   index1 - index of one of the elements.
+"   index2 - index of the other element.
+" Returns:
+"   the new array with swapped elements.
+function! MvSwapElementsAt(array, sep, index1, index2)
+  if a:index1 == a:index2
+    return a:array
+  endif
+
+  if a:index1 > a:index2
+    let index1 = a:index2
+    let index2 = a:index1
+  else
+  let index1 = a:index1
+  let index2 = a:index2
+  endif
+  let ele1 = MvElementAt(a:array, a:sep, index1)
+  let ele2 = MvElementAt(a:array, a:sep, index2)
+  let array = MvRemoveElement(a:array, a:sep, ele1)
+  let array = MvRemoveElement(array, a:sep, ele2)
+  if index1 >= MvNumberOfElements(array, a:sep)
+    let array = MvAddElement(array, a:sep, ele2)
+  else
+    let array = MvInsertElementAt(array, a:sep, ele2, index1)
+  endif
+  if index2 >= MvNumberOfElements(array, a:sep)
+    let array = MvAddElement(array, a:sep, ele1)
+  else
+    let array = MvInsertElementAt(array, a:sep, ele1, index2)
+  endif
+  return array
+endfunction
+
+
+" Sorts the elements in the array using the given comparator and in the given
+"   direction using quick sort algorithm.
+" Returns:
+"   The new sorted array.
+" See:
+"   QSort2() function from genutils.vim
+function! MvQSortElements(array, sep, cmp, direction)
+  let s:arrayForSort{'array'} = a:array
+  let s:arrayForSort{'sep'} = a:sep
+  let nElements = MvNumberOfElements(a:array, a:sep)
+  " Create an array containing indirection indexes.
+  let s:sortArrayIndexes = ''
+  let i = 0
+  while i < nElements
+    let s:sortArrayIndexes = s:sortArrayIndexes . i . ','
+    let i = i + 1
+  endwhile
+  call QSort2(1, nElements, a:cmp, a:direction,
+	\ s:myScriptId . 'SortGetElementAt', s:myScriptId . 'SortSwapElements',
+	\ '')
+
+  " Finally reconstruct the array from the sorted indexes.
+  let array = ''
+  let nextEle = ''
+  call MvIterCreate(s:sortArrayIndexes, ',', 'MvSortElements')
+  while MvIterHasNext('MvSortElements')
+    let nextEle = MvElementAt(a:array, a:sep, MvIterNext('MvSortElements'))
+    let array = MvAddElement(array, a:sep, nextEle)
+  endwhile
+  call MvIterDestroy('MvSortElements')
+  return array
+endfunction
+
+
+function! s:SortGetElementAt(index, context)
+  let index = MvElementAt(s:sortArrayIndexes, ',', a:index - 1)
+  return MvElementAt(s:arrayForSort{'array'}, s:arrayForSort{'sep'}, index)
+endfunction
+
+
+function! s:SortSwapElements(index1, index2, context)
+  let s:sortArrayIndexes = MvSwapElementsAt(s:sortArrayIndexes, ',', a:index1 - 1, a:index2 - 1)
+  if (MvNumberOfElements(s:sortArrayIndexes, ',') != 5)
+    echomsg "SortSwapElements: swap bug for array: " . s:sortArrayIndexes . " index1: " . a:index1 . " index2: " . a:index2
+  endif
 endfunction
 
 
@@ -654,13 +792,13 @@ endfunction
 
 
 " Useful function to prompt user for an element out of the passed in array. The
-"   user will be prompted with a list of choices to make, each corresponding to
-"   an element in the array. User can enter the numer of the element or the
-"   element itself as a choice. Take a look at the remcmd.vim script at
-"   vim.sf.net for an example usage. Because of the internal implementation,
-"   there is a limit on what characters may be contained in the array elements.
-"   Some characters that result in syntax errors are single-quote,
-"   double-quote, semi-colon etc.
+"   user will be prompted with a list of choices to make (formatted in a
+"   single column, each corresponding to an element in the array. User can
+"   enter the numer of the element or the element itself as a choice. Take a
+"   look at the remcmd.vim script at vim.sf.net for an example usage. Because
+"   of the internal implementation, there is a limit on what characters may be
+"   contained in the array elements. Some characters that result in syntax
+"   errors are single-quote, double-quote, semi-colon etc.
 " Params:
 "   default - The default value for the selection. Default can be the
 "               element-index or the element itself.
@@ -675,9 +813,17 @@ endfunction
 "   the selected element or empty string, "" if nothing is selected.
 "
 function! MvPromptForElement(array, sep, default, msg, skip, useDialog)
+  return MvPromptForElement2(a:array, a:sep, a:default, a:msg, a:skip,
+	\ a:useDialog, 1)
+endfunction
+
+" Same as above MvPromptForElement, except that you can tell the number of
+"   columns that you want the elements to be formatted into.
+function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols)
   let cnt = 0
-  let optionsMsg = ""
+  let nCols = a:nCols
   let array{"length"} = 0
+  " Create a hach from values to their index in the array.
   call MvIterCreate(a:array, a:sep, "MvPromptForElement")
   while MvIterHasNext("MvPromptForElement")
     let nextElement = MvIterNext("MvPromptForElement")
@@ -695,8 +841,48 @@ function! MvPromptForElement(array, sep, default, msg, skip, useDialog)
   call MvIterDestroy("MvPromptForElement")
 
   let index = 0
+  let line = ""
+  let element = ""
+  let optionsMsg = ""
+  let colWidth = &columns / nCols - 1
+  let curCol = 1
   while index < array{"length"}
-    let optionsMsg = optionsMsg . index . "        " . array{index} ."\n"
+    let element = index . s:Spacer(4 - s:nDigits(index)) . array{index}
+    let eleColWidth = (strlen(element) - 1) / colWidth + 1
+    let element = element . s:Spacer(
+	  \ eleColWidth * (colWidth + 1) - strlen(element) - 1)
+    let wouldBeLength = strlen(line) + strlen(element) + 1
+    if wouldBeLength > (curCol * (colWidth + eleColWidth)) &&
+	  \ wouldBeLength > &columns
+      let splitLine = 2 " Split before adding the new element.
+    elseif curCol == nCols
+      let splitLine = 1 " Split after adding the new element.
+    else
+      let splitLine = 0
+    endif
+    if splitLine == 2
+      if strlen(line) == &columns
+	" Remove the last space as it otherwise results in an extra empty line
+	" on the screen.
+	let line = strpart(line, 0, strlen(line) - 1)
+      endif
+      let optionsMsg = optionsMsg . line . "\n"
+      let line = element . ' '
+      let curCol = strlen(element) / (colWidth + 1)
+    else
+      let line = line . element . ' '
+      if splitLine == 1
+	if strlen(line) == &columns
+	  " Remove the last space as it otherwise results in an extra empty line
+	  " on the screen.
+	  let line = strpart(line, 0, strlen(line) - 1)
+	endif
+	let curCol = 0 " Reset col count.
+	let optionsMsg = optionsMsg . line . "\n"
+	let line = ""
+      endif
+    endif
+    let curCol = curCol + 1
     let index = index + 1
   endwhile
 
@@ -717,7 +903,8 @@ function! MvPromptForElement(array, sep, default, msg, skip, useDialog)
 
     if selection == ""
       let selectedElement = ""
-    elseif selection != "" && match(selection, '^\d\+$') != -1 && exists("array" . selection)
+    elseif selection != "" && match(selection, '^\d\+$') != -1 &&
+	  \ exists("array" . selection)
       let selectedElement = array{selection}
     elseif exists("array" . selection)
       let selectedElement = selection
@@ -725,6 +912,25 @@ function! MvPromptForElement(array, sep, default, msg, skip, useDialog)
     echo "\n"
   endwhile
   return selectedElement
+endfunction
+
+
+function! s:Spacer(width)
+  return strpart("                                                            ",
+	\ 0, a:width)
+endfunction
+
+
+function! s:nDigits(num)
+  " I know log() can be used, but since log() is not available, what is the
+  " other way finding this?
+  return (a:num < 10)
+	\ ? 1
+	\ : (a:num < 100)
+	\   ? 2
+	\   : (a:num < 1000)
+	\     ? 3
+	\     : 4
 endfunction
 
 "
@@ -770,7 +976,7 @@ function! s:Escape(str)
   return escape(a:str, "\\.[^$~")
 endfunction
 
-"
+
 "
 "function! s:Assert(actual, expected, msg)
 "  if a:actual != a:expected
@@ -854,20 +1060,20 @@ endfunction
 "
 "  call s:Assert(MvInsertElementAt("1,,2,,3,,4", ",,", "5", 2), "1,,2,,5,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4 sep: ,, for element 5 at index 2")
 "  call s:Assert(MvInsertElementAt("1,,2,,3,,4,,", ",,", "5", 0), "5,,1,,2,,3,,4,,", "MvInsertElementAt with array: 1,,2,,3,,4,, sep: ,, for element 5 at index 0")
-
+"
 "  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 1), "2,,3,,4,,1,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 1")
 "  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 0), "1,,2,,3,,4", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 0")
 "  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 3), "4,,1,,2,,3,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 3")
 "  call s:Assert(MvRotateLeftAt("1,,2,,3,,4", ",,", 4), "1,,2,,3,,4,,", "MvRotateLeftAt with array: 1,,2,,3,,4 sep: ,, at index 4")
-
+"
 "  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 1), "3,,4,,1,,2,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 1")
 "  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 0), "2,,3,,4,,1,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 0")
 "  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 3), "1,,2,,3,,4,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 3")
 "  call s:Assert(MvRotateRightAt("1,,2,,3,,4", ",,", 4), "1,,2,,3,,4,,", "MvRotateRightAt with array: 1,,2,,3,,4 sep: ,, at index 4")
-
+"
 "
 "  call s:Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", "c", "Please press Enter:", "", 0), "c", "MvPromptForElement with array a,,b,,c,,d,, for default element c")
-"  call s:Assert(MvPromptForElement("a,,b,,c,,d,,", ",,", 1, "Please press Enter:", "", 0), "b", "MvPromptForElement with array a,,b,,c,,d,, for default index 1")
+"  call s:Assert(MvPromptForElement2("a,,b,,c,,d,,", ",,", 1, "Please press Enter:", "", 0, 2), "b", "MvPromptForElement with array a,,b,,c,,d,, for default index 1")
 "
 "  "
 "  " Test read-only operations using a regex-pattern as a separator.
@@ -910,4 +1116,11 @@ endfunction
 "  call s:Assert(MvLastElement("1xxxx2xxx3x4", 'x\+'), "4", "MvLastElement with array: 1xxxx2xxx3x4")
 "  call s:Assert(MvLastElement("1xxxx", 'x\+'), "1", "MvLastElement with array: 1xxxx")
 "  call s:Assert(MvLastElement("1", 'x\+'), "1", "MvLastElement with array: 1")
+"
+"  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 1, 3), "1,4,3,2,5,", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 1 and 3")
+"  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 3, 1), "1,4,3,2,5,", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 3 and 1")
+"  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 0, 3), "4,2,3,1,5,", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 0 and 3")
+"  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 1, 4), "1,5,3,4,2,", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 1 and 4")
+"  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 3, 3), "1,2,3,4,5", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 3 and 3")
+"  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 3, 4), "1,2,3,5,4", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 3 and 4")
 "endfunction

@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna Dara (hari_vim at yahoo dot com)
-" Last Modified: 26-Feb-2004 @ 19:10
+" Last Modified: 17-May-2004 @ 19:38
 " Requires: Vim-6.0, genutils.vim(1.2) for sorting support.
-" Version: 3.5.1
+" Version: 3.6.1
 " Acknowledgements:
 "   - MvRemoveElementAll was contributed by Steve Hall
 "     "digitect at mindspring dot com"
@@ -65,6 +65,12 @@
 "       int     MvGetSelectedIndex()
 "       String  MvNumSearchNext(String array, String sep, String ele, int dir, ...)
 "
+"   Utility Functions:
+"     This function creates a pattern that avoids protected comma's from
+"     getting treated as separators. The argument goes directly into the []
+"     atom, so make sure you pass in a valid string.
+"       String  MvCrUnProtectedCharsPattern(String sepChars)
+"
 " Usage:
 "   - An array is nothing but a string of multiple values separated by a
 "     pattern.  The simplest example being Vim's multi-value variables such as
@@ -84,13 +90,11 @@
 "   - If you for example want to go over the words in a sentence, then an easy
 "     way would be to treat the sentence as an array with '\s\+' as a
 "     separator pattern. Be sure not to have zero-width expressions in the
-"     pattern as these would otherwise confuse the plugin.
+"     pattern as these could confuse the plugin.
 "   - Suggested usage to go over the elements is to use the iterater functions
 "     as shows in the below example
 "     Ex Usage:
-"       " The below pattern avoids protected comma's from getting treated as
-"       "   separators.
-"       call MvIterCreate(&tags, '\\\@<!\(\\\\\)*\zs,', 'Tags', ',')
+"       call MvIterCreate(&tags, MvCrUnProtectedCharsPattern(','), 'Tags', ',')
 "       while MvIterHasNext('Tags')
 "         call input('Next element: ' . MvIterNext('Tags'))
 "       endwhile
@@ -101,6 +105,12 @@
 "   All element-indexes start from 0 (like in C++ or Java).
 "   All string-indexes start from 0 (as it is for Vim built-in functions).
 "
+" Changes in 3.6:
+"   - Changed MvNumberOfElements() to use "\r" as the temporary replacement
+"     character instead of "x" which was more likely to occur at the end of
+"     the array. The "\r" character rarely appears in Vim strings (they are
+"     always stripped off while copying from the buffer).
+"   - A new utility function MvCrUnProtectedCharsPattern().
 " Changes in 3.5:
 "   CAUTION: This version potentially introduces an incompatibility with that
 "   of older versions because of the below change. If your plugin depended on
@@ -169,10 +179,14 @@
 "     using \%(^,,\|,\) as pattern for 'path' causes trouble when the first
 "     element is empty element (indicating the current directory).
 
-if exists("loaded_multvals")
+if exists('loaded_multvals')
   finish
 endif
-let loaded_multvals = 305
+if v:version < 600
+  echomsg 'multvals: You need at least Vim 6.0'
+  finish
+endif
+let loaded_multvals = 306
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -552,12 +566,15 @@ function! MvNumberOfElements(array, sep, ...)
   let array = a:array
   let pat = '\%(.\)\{-}\%(' . a:sep . '\)\{-1\}'
 
-  " Replace all the elements and the following separator with 'x' and count
-  " the number of 'x's. If the last one isn't followed by a separator, it will
-  " not be replaced with an 'x'.
-  let mod = substitute(array, pat, 'x', 'g')
-  if strridx(mod, 'x') != (strlen(mod) - 1)
-    let nElements = strlen(s:Matchstr(mod, '^x*', 0)) + 1
+  " FIXME: Choosing "\r" because it is pretty rare to find it in Vim strings
+  "   (doesn't appear unless directly assigned). 
+  " Replace all the elements and the following separator with "\r" and count
+  " the number of "\r"s. If the last one isn't followed by a separator, it will
+  " not be replaced with an "\r".
+  let replChar = "\r"
+  let mod = substitute(array, pat, replChar, 'g')
+  if strridx(mod, replChar) != (strlen(mod) - 1)
+    let nElements = strlen(s:Matchstr(mod, '^'.replChar.'*', 0)) + 1
   else
     let nElements = strlen(mod)
   endif
@@ -1129,6 +1146,17 @@ endfunction
 
 " Utility functions {{{
 
+let s:UNPROTECTED_CHAR_PRFX = '\%(\%([^\\]\|^\)\\\%(\\\\\)*\)\@<!' " Doesn't eat slashes.
+"let s:UNPROTECTED_CHAR_PRFX = '\\\@<!\%(\\\\\)*' " Eats slashes.
+function! MvCrUnProtectedCharsPattern(sepChars)
+  let regex = s:UNPROTECTED_CHAR_PRFX
+  let sep = a:sepChars
+  if strlen(sep) > 1
+    let sep = '['.sep.']'
+  endif
+  return regex.sep
+endfunction
+
 " Make sure the array ha a trailing separator, returns the new array.
 function! s:EnsureTrailingSeparator(array, sep, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
@@ -1406,8 +1434,6 @@ endfunction
 "endfunction
 "
 "function! MvCompareBuiltIn()
-"  exec MakeArgumentString()
-"
 "  let array=''
 "  let array{1}{'y'} = ''
 "  let array{1}{'x'} = ''

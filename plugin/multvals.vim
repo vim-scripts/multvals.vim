@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna Dara (hari_vim at yahoo dot com)
-" Last Modified: 24-Sep-2004 @ 10:36
+" Last Modified: 26-Oct-2004 @ 19:03
 " Requires: Vim-6.0, genutils.vim(1.2) for sorting support.
-" Version: 3.9.0
+" Version: 3.10.0
 " Acknowledgements:
 "   - MvRemoveElementAll was contributed by Steve Hall
 "     "digitect at mindspring dot com"
@@ -35,6 +35,7 @@
 "       String MvSwapElementsAt(String array, String sep, int ind1, int ind2,
 "       ...)
 "       String MvQSortElements(String array, String sep, String cmp, int dir, ...)
+"       String MvBISortElements(String array, String sep, String cmp, int dir, ...)
 "
 "   Reader Functions:
 "       int     MvNumberOfElements(String array, String sep, ...)
@@ -105,6 +106,8 @@
 "   All element-indexes start from 0 (like in C++ or Java).
 "   All string-indexes start from 0 (as it is for Vim built-in functions).
 "
+" Changes in 3.10:
+"   - New function MvBISortElements.
 " Changes in 3.9:
 "   - The MvIterPeek function was marked script local, I guess a typo.
 " Changes in 3.8:
@@ -193,7 +196,7 @@ if v:version < 600
   echomsg 'multvals: You need at least Vim 6.0'
   finish
 endif
-let loaded_multvals = 309
+let loaded_multvals = 310
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -518,6 +521,23 @@ endfunction
 "   QSort2() function from genutils.vim
 function! MvQSortElements(array, sep, cmp, direction, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
+  return s:MvSortElements(a:array, a:sep, a:cmp, a:direction, 'QSort2',
+        \ s:myScriptId . 'SortGetElementAt', s:myScriptId . 'SortSwapElements',
+        \ sep)
+endfunction
+
+" Just like MvQSortElements(), except that it uses the faster BinInsertSort2()
+"   functions instead of the QSort2() function.
+function! MvBISortElements(array, sep, cmp, direction, ...)
+  let sep = (a:0 == 0) ? a:sep : a:1
+  return s:MvSortElements(a:array, a:sep, a:cmp, a:direction, 'BinInsertSort2',
+        \ s:myScriptId . 'SortGetElementAt', s:myScriptId . 'SortMoveElement',
+        \ sep)
+endfunction
+
+function! s:MvSortElements(array, sep, cmp, direction, sortFunc, acc, wrt,
+      \ ...)
+  let sep = (a:0 == 0) ? a:sep : a:1
   let s:arrayForSort{'array'} = a:array
   let s:arrayForSort{'sep'} = a:sep
   let s:arrayForSort{'samplesep'} = sep
@@ -529,23 +549,20 @@ function! MvQSortElements(array, sep, cmp, direction, ...)
     let s:sortArrayIndexes = s:sortArrayIndexes . i . ','
     let i = i + 1
   endwhile
-  call QSort2(1, nElements, a:cmp, a:direction,
-        \ s:myScriptId . 'SortGetElementAt', s:myScriptId . 'SortSwapElements',
-        \ '')
+  call {a:sortFunc}(1, nElements, a:cmp, a:direction, a:acc, a:wrt, '')
 
   " Finally reconstruct the array from the sorted indexes.
   let array = ''
   let nextEle = ''
-  call MvIterCreate(s:sortArrayIndexes, ',', 'MvQSortElements', sep)
-  while MvIterHasNext('MvQSortElements')
-    let nextEle = MvElementAt(a:array, a:sep, MvIterNext('MvQSortElements'),
+  call MvIterCreate(s:sortArrayIndexes, ',', 'MvSortElements', sep)
+  while MvIterHasNext('MvSortElements')
+    let nextEle = MvElementAt(a:array, a:sep, MvIterNext('MvSortElements'),
           \ sep)
     let array = MvAddElement(array, sep, nextEle)
   endwhile
-  call MvIterDestroy('MvQSortElements')
+  call MvIterDestroy('MvSortElements')
   return array
 endfunction
-
 
 function! s:SortGetElementAt(index, context)
   let index = MvElementAt(s:sortArrayIndexes, ',', a:index - 1)
@@ -553,10 +570,16 @@ function! s:SortGetElementAt(index, context)
         \ s:arrayForSort{'samplesep'})
 endfunction
 
-
 function! s:SortSwapElements(index1, index2, context)
   let s:sortArrayIndexes = MvSwapElementsAt(s:sortArrayIndexes, ',',
         \ a:index1 - 1, a:index2 - 1)
+endfunction
+
+function! s:SortMoveElement(from, to, context)
+  let ele = MvElementAt(s:sortArrayIndexes, ',', a:from - 1)
+  let s:sortArrayIndexes = MvRemoveElementAt(s:sortArrayIndexes, ',', a:from - 1)
+  let s:sortArrayIndexes = MvInsertElementAt(s:sortArrayIndexes, ',', ele,
+        \ a:to)
 endfunction
 
 " Writer functions }}}
@@ -1416,6 +1439,11 @@ endfunction
 "  call s:Assert(MvQSortElements('e,a,d,b,f,c,g', ',', 'CmpByString', 1), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
 "
 "  call s:Assert(MvQSortElements('e,,a,,,d,,b,f,,,,c,,g', ',\+', 'CmpByString', 1, ','), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
+"
+"  call s:Assert(MvBISortElements('3,4,2,5,7,1,6', ',', 'CmpByNumber', -1), '7,6,5,4,3,2,1,', 'MvBISortElements with array: 3,4,2,5,7,1,6 with number comparator in descending order')
+"  call s:Assert(MvBISortElements('e,a,d,b,f,c,g', ',', 'CmpByString', 1), 'a,b,c,d,e,f,g,', 'MvBISortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
+"
+"  call s:Assert(MvBISortElements('e,,a,,,d,,b,f,,,,c,,g', ',\+', 'CmpByString', 1, ','), 'a,b,c,d,e,f,g,', 'MvBISortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
 "
 "  call s:Assert(MvElementLike('abc,123,ABC,', ',', '\d\+'), '123', 'MvElementLike with array: abc,123,ABC and pattern: \d\+')
 "endfunction

@@ -1,8 +1,11 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Modified: 29-May-2003 @ 14:49
+" Last Modified: 19-Aug-2003 @ 20:48
 " Requires: Vim-6.0, genutils.vim(1.2) for sorting support.
-" Version: 3.2.1
+" Version: 3.3.0
+" Acknowledgements:
+"   - MvRemoveElementAll was contributed by Steve Hall
+"     "digitect at mindspring dot com"
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -38,6 +41,7 @@
 "       MvContainsElement
 "       MvContainsPattern
 "       MvElementAt
+"       MvElementLike
 "       MvLastElement
 "       MvIterCreate
 "       MvIterDestroy
@@ -46,6 +50,7 @@
 "       MvCmpByPosition
 "       MvPromptForElement
 "       MvPromptForElement2
+"       MvGetSelectedIndex
 "       MvNumSearchNext
 "
 " Usage:
@@ -82,6 +87,8 @@
 " All element-indexes start from 0 (like in C++ or Java).
 " All string-indexes start from 0 (as it is for Vim built-in functions).
 "
+" Changes in 3.2:
+"   - New function MvElementLike. 
 " Changes in 3.0:
 "   - All functions can now be used with regular expressions as patterns.
 "   - There is an API change. All functions now require a sample regular
@@ -114,14 +121,17 @@
 "       conflicts.
 "
 " TODO:
-"   Need a function to extract patterns, MvElementLikePattern().
-"   More testing is required for regular expressions as separators.
-"   Some performance improvement should be possible in: MvElementAt,
-"     MvSwapElementsAt, MvQSortElements, MvPushToFront (and friends)
-"   Using '\%(\s\|\n\)\+' as separator pattern for a block of text containing
-"     newlines doesn't detect newlines as a separtor.
-"
-"
+"   - More testing is required for regular expressions as separators.
+"   - Some performance improvement should be possible in: MvElementAt,
+"     MvSwapElementsAt, MvQSortElements, MvPushToFront (and friends),
+"     MvRemoveElementAll.
+"   - When regex is used as a separtor I should be careful in cases when I
+"     prefix the array with an extra separator. If the first element of the
+"     array is an empty element, and if the regex is sensitive to the
+"     repetitiveness of any characters (such as ,, instead of ,),
+"     the algorithm can get confused (e.g., MvStrIndexOfElementImpl).  E.g.,
+"     using \%(^,,\|,\) as pattern for 'path' causes trouble when the first
+"     element is empty element (indicating the current directory).
 
 if exists("loaded_multvals")
   finish
@@ -190,8 +200,8 @@ function! MvRemoveElement(array, sep, ele, ...)
   return s:MvRemoveElementImpl(a:array, a:sep, a:ele, 0, sep)
 endfunction
 
-" Same as MvRemoveElement, except that the element that
-"   matches the passed in pattern is removed.
+" Same as MvRemoveElement, except that a regex pattern can be used as a
+"   element instead of a constant string.
 function! MvRemovePattern(array, sep, pat, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   return s:MvRemoveElementImpl(a:array, a:sep, a:pat, 1, sep)
@@ -231,7 +241,7 @@ endfunction
 
 
 " Remove the all occurances of element in array.
-" Contributed by Steve Hall <digitect at mindspring.com>
+" Contributed by Steve Hall "digitect at mindspring dot com"
 " Params:
 "   ele - Element to be removed from the array.
 " Returns:
@@ -506,8 +516,8 @@ function! MvStrIndexOfElement(array, sep, ele, ...)
   return s:MvStrIndexOfElementImpl(a:array, a:sep, a:ele, 0, sep)
 endfunction
 
-" Same as MvStrIndexOfElement, except that the string index of element that
-"   matches the passed in pattern is found.
+" Same as MvStrIndexOfElement, except that a regex pattern can be used as
+"   element instead of a constant string.
 function! MvStrIndexOfPattern(array, sep, pat, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   return s:MvStrIndexOfElementImpl(a:array, a:sep, a:pat, 1, sep)
@@ -538,8 +548,8 @@ function! MvStrIndexAfterElement(array, sep, ele, ...)
   return s:MvStrIndexAfterElementImpl(a:array, a:sep, a:ele, 0, sep)
 endfunction
 
-" Same as MvStrIndexAfterElement, except that the string index after element
-"   that matches the passed in pattern is found.
+" Same as MvStrIndexAfterElement, except that a regex pattern can be used
+"   as element instead of a constant string.
 function! MvStrIndexAfterPattern(array, sep, pat, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   return s:MvStrIndexAfterElementImpl(a:array, a:sep, a:pat, 1, sep)
@@ -613,8 +623,8 @@ function! MvIndexOfElement(array, sep, ele, ...)
   return s:MvIndexOfElementImpl(a:array, a:sep, a:ele, 0, sep)
 endfunction
 
-" Same as MvIndexOfElement, except that the index of element that matches
-"   the passed in pattern is found.
+" Same as MvIndexOfElement, except that a regex pattern can be used as element
+"   instead of a constant string.
 function! MvIndexOfPattern(array, sep, pat, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   return s:MvIndexOfElementImpl(a:array, a:sep, a:pat, 1, sep)
@@ -651,8 +661,8 @@ function! MvContainsElement(array, sep, ele, ...)
   endif
 endfunction
 
-" Same as MvContainsElement, except that the element that matches the passed
-"   in pattern is checked.
+" Same as MvContainsElement, except that a regex pattern can be used as
+"   element instead of a constant string.
 function! MvContainsPattern(array, sep, pat, ...)
   let sep = (a:0 == 0) ? a:sep : a:1
   if MvStrIndexOfPattern(a:array, a:sep, a:pat, sep) >= 0
@@ -732,6 +742,14 @@ function! MvElementAt(array, sep, index, ...)
     endif
   endif
   return sub
+endfunction
+
+
+function! MvElementLike(array, sep, pat, ...)
+  let sep = (a:0 == 0) ? a:sep : a:1
+  let array = sep . s:EnsureTrailingSeparator(a:array, a:sep, sep)
+  let str = matchstr(array, a:sep.'\zs'.a:pat.'\ze'.a:sep)
+  return str
 endfunction
 
 
@@ -854,7 +872,8 @@ endfunction
 "   user will be prompted with a list of choices to make. The elements are
 "   formatted in a single column with a number prefixed to them. User can
 "   then enter the numer of the element to indicate the selection. Take a
-"   look at the remcmd.vim script at vim.sf.net for an example usage.
+"   look at the selectbuf.vim script(:SBS command) at vim.sf.net for an
+"   example usage.
 " Params:
 "   default - The default value for the selection. Default can be the
 "               element-index or the element itself. If number, it is always
@@ -878,8 +897,8 @@ function! MvPromptForElement(array, sep, default, msg, skip, useDialog, ...)
 endfunction
 
 
-" Same as above MvPromptForElement, except that you can tell the number of
-"   columns that you want the elements to be formatted into.
+" Same as above MvPromptForElement, except that a regex pattern can be used
+"   as element instead of a constant string.
 function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
       \ ...)
   let sep = (a:0 == 0) ? a:sep : a:1
@@ -961,17 +980,17 @@ function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
 
   while !exists("selectedElement")
     if a:useDialog
-      let selection = inputdialog(optionsMsg . a:msg, default) + 0
+      let s:selection = inputdialog(optionsMsg . a:msg, default)
     else
-      let selection = input(optionsMsg . a:msg, default)
+      let s:selection = input(optionsMsg . a:msg, default)
     endif
-
-    if selection == ""
+    if s:selection == ""
       let selectedElement = ""
+      let s:selection = -1
     else
-      let selection = selection + 0
-      if selection >= 0 && selection < nElements
-	let selectedElement = MvElementAt(newArray, sep, selection)
+      let s:selection = (s:selection !~ '^\d\+$') ? -1 : (s:selection + 0)
+      if s:selection >= 0 && s:selection < nElements
+	let selectedElement = MvElementAt(newArray, sep, s:selection)
       else
 	echohl ERROR | echo "\nInvalid selection, please try again" |
 	      \ echohl NONE
@@ -983,10 +1002,20 @@ function! MvPromptForElement2(array, sep, default, msg, skip, useDialog, nCols,
 endfunction
 
 
+let s:selection = -1
+" Returns the index of the element selected by the user in the previous
+"   MvPromptForElement or MvPromptForElement2 calls. Returns -1 when the user
+"   didn't select any element (aborted the selection). This function is useful
+"   if there are empty empty or duplicate elements in the selection.
+function! MvGetSelectedIndex()
+  return s:selection
+endfunction
+
+
 " This function searches for the value in the given array that comes after val
 "   in the given dir (1 or -1). The array is expected to be sorted. Only those
 "   that are not regular expressions are supported as separators.
-function MvNumSearchNext(array, sep, val, dir, ...)
+function! MvNumSearchNext(array, sep, val, dir, ...)
   let nextVal = ''
   if a:array != ''
     let sep = (a:0 == 0) ? a:sep : a:1
@@ -1254,6 +1283,8 @@ endfunction
 "  call s:Assert(MvQSortElements('e,a,d,b,f,c,g', ',', 'CmpByString', 1), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
 "
 "  call s:Assert(MvQSortElements('e,,a,,,d,,b,f,,,,c,,g', ',\+', 'CmpByString', 1, ','), 'a,b,c,d,e,f,g,', 'MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order')
+"
+"  call s:Assert(MvElementLike('abc,123,ABC,', ',', '\d\+'), '123', 'MvElementLike with array: abc,123,ABC and pattern: \d\+')
 "endfunction
 " Testing }}}
 

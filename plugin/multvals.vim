@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna Dara (hari_vim at yahoo dot com)
-" Last Modified: 13-Sep-2004 @ 18:09
+" Last Modified: 24-Sep-2004 @ 10:36
 " Requires: Vim-6.0, genutils.vim(1.2) for sorting support.
-" Version: 3.8.0
+" Version: 3.9.0
 " Acknowledgements:
 "   - MvRemoveElementAll was contributed by Steve Hall
 "     "digitect at mindspring dot com"
@@ -105,6 +105,8 @@
 "   All element-indexes start from 0 (like in C++ or Java).
 "   All string-indexes start from 0 (as it is for Vim built-in functions).
 "
+" Changes in 3.9:
+"   - The MvIterPeek function was marked script local, I guess a typo.
 " Changes in 3.8:
 "   - Fixed bugs in the *StrIndex* functions, such that when the element is
 "     not found, they always return the contracted -1 (instead of any -ve
@@ -169,6 +171,7 @@
 "       conflicts.
 "
 " TODO:
+"   - Add a utility function to strip the last separator out (Thomas Link).
 "   - Why is MvElementAt('a\|b\\|c|d', '\\\@<!\%(\\\\\)*|', <index>, '|') not
 "     working as expected (MvNumberOfElements reports correctly)?
 "   - More testing is required for regular expressions as separators.
@@ -190,7 +193,7 @@ if v:version < 600
   echomsg 'multvals: You need at least Vim 6.0'
   finish
 endif
-let loaded_multvals = 308
+let loaded_multvals = 309
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -907,7 +910,7 @@ function! MvIterNext(iterName)
   return s:MvIterNext(a:iterName, 0)
 endfunction
 
-function! s:MvIterPeek(iterName)
+function! MvIterPeek(iterName)
   return s:MvIterNext(a:iterName, 1)
 endfunction
 

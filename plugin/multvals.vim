@@ -1,8 +1,8 @@
 " multvals.vim -- Array operations on Vim multi-values, or just another array.
 " Author: Hari Krishna <hari_vim@yahoo.com>
-" Last Modified: 26-Nov-2002 @ 11:09
+" Last Modified: 05-Dec-2002 @ 15:43
 " Requires: Vim-6.0 or higher, genutils.vim(1.2) for sorting support.
-" Version: 2.4.0
+" Version: 2.5.0
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -55,7 +55,9 @@
 "   - Suggested usage to go over the elements is to use the iterater functions
 "     as shows in the below example
 "   Ex Usage:
-"       call MvIterCreate(&tags, ",", "Tags")
+"       " The below pattern avoids protected comma's from getting treated as
+"       separators.
+"       call MvIterCreate(&tags, "\\\@<!\(\\\\\)*\zs,", "Tags")
 "     	while MvIterHasNext("Tags")
 "     	  call input("Next element: " . MvIterNext("Tags"))
 "     	endwhile
@@ -626,6 +628,25 @@ endfunction
 
 " Sorts the elements in the array using the given comparator and in the given
 "   direction using quick sort algorithm.
+" Ex:
+"   The following sorts the numbers in descending order using the bundled number
+"   comparator (see genutils.vim).
+"
+"     echo MvQSortElements('3,4,2,5,7,1,6', ',', 's:CmpByNumber', -1)
+"
+"   The following sorts the alphabet in ascending order again using the
+"   bundled string comparator (see genutils.vim).
+"
+"     echo MvQSortElements('e,a,d,b,f,c,g', ',', 's:CmpByString', 1)
+"
+" Params:
+"   cmp - name of the comparator function. You can use the names of standard
+"	  comparators specified in the genutils.vim script, such as
+"	  's:CmpByString', or define your own (which then needs to be a global
+"	  function or if it is a script local function, prepend it with your
+"	  script id. See genutils.vim for how to get your script id and for
+"	  examples on comparator functions (if you want to write your own).
+"   direction - 1 for asending and -1 for descending.
 " Returns:
 "   The new sorted array.
 " See:
@@ -666,9 +687,6 @@ endfunction
 
 function! s:SortSwapElements(index1, index2, context)
   let s:sortArrayIndexes = MvSwapElementsAt(s:sortArrayIndexes, ',', a:index1 - 1, a:index2 - 1)
-  if (MvNumberOfElements(s:sortArrayIndexes, ',') != 5)
-    echomsg "SortSwapElements: swap bug for array: " . s:sortArrayIndexes . " index1: " . a:index1 . " index2: " . a:index2
-  endif
 endfunction
 
 
@@ -1123,4 +1141,7 @@ endfunction
 "  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 1, 4), "1,5,3,4,2,", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 1 and 4")
 "  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 3, 3), "1,2,3,4,5", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 3 and 3")
 "  call s:Assert(MvSwapElementsAt("1,2,3,4,5", ',', 3, 4), "1,2,3,5,4", "MvSwapElementsAt with array: 1,2,3,4,5 for elements: 3 and 4")
+"
+"  call s:Assert(MvQSortElements('3,4,2,5,7,1,6', ',', 's:CmpByNumber', -1), "7,6,5,4,3,2,1", "MvQSortElements with array: 3,4,2,5,7,1,6 with number comparator in descending order")
+"  call s:Assert(MvQSortElements('e,a,d,b,f,c,g', ',', 's:CmpByString', 1), "a,b,c,d,e,f,g", "MvQSortElements with array: e,a,d,b,f,c,g with string comparator in ascending order")
 "endfunction
